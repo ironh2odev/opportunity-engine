@@ -1,0 +1,66 @@
+# Node / Web
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.pnpm-store/
+.turbo/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# OS / Editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Privacy and secrets
+private/
+.env
+.env.local
+.env.*
+!.env.example
+*.pdf
+*.docx
+*.doc
+*.csv
+*.PDF
+*.DOCX
+*.DOC
+*.CSV
+*.xlsx
+*.xls
+*.pptx
+*.ppt
+*.rtf
+*.odt
+*.epub
+*.XLSX
+*.XLS
+*.PPTX
+*.PPT
+*.RTF
+*.ODT
+*.EPUB
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.crt
+*.cer
+*.sqlite
+*.sqlite3
+*.db
+
+# Logs
+*.log
+pnpm-debug.log*

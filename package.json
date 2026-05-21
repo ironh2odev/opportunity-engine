@@ -1,0 +1,19 @@
+{
+  "name": "opportunity-engine",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.1",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "dev:web": "pnpm --filter @aoe/web dev",
+    "build:web": "pnpm --filter @aoe/web build",
+    "dev:api": "cd apps/api && uvicorn app.main:app --reload",
+    "format": "pnpm --filter @aoe/web format"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.3"
+  }
+}
