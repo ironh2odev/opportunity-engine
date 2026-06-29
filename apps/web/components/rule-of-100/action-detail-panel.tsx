@@ -7,11 +7,17 @@ export function ActionDetailPanel({
   onStatusChange,
   onApprove,
   onComplete,
+  isLoading = false,
+  actionError = null,
+  onDismissError,
 }: {
   action: DailyAction | null;
   onStatusChange: (status: DailyActionStatus) => void;
   onApprove: () => void;
   onComplete: () => void;
+  isLoading?: boolean;
+  actionError?: string | null;
+  onDismissError?: () => void;
 }) {
   if (!action) {
     return (
@@ -21,7 +27,7 @@ export function ActionDetailPanel({
     );
   }
 
-  const completeDisabled = action.approvalRequired && action.status !== "approved";
+  const completeDisabled = (action.approvalRequired && action.status !== "approved") || isLoading;
 
   return (
     <Card className="space-y-4">
@@ -61,17 +67,19 @@ export function ActionDetailPanel({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
+          disabled={isLoading}
           onClick={() => onStatusChange("in_review")}
-          className="rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/5"
+          className="rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-45"
         >
           Move to in review
         </button>
         <button
           type="button"
+          disabled={isLoading}
           onClick={onApprove}
-          className="rounded-lg bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
+          className="rounded-lg bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-45"
         >
-          Approve draft
+          {isLoading ? "Saving…" : "Approve draft"}
         </button>
         <button
           type="button"
@@ -79,27 +87,40 @@ export function ActionDetailPanel({
           disabled={completeDisabled}
           className="rounded-lg bg-cyan-500/90 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-45"
         >
-          Complete action
+          {isLoading ? "Saving…" : "Complete action"}
         </button>
         <button
           type="button"
+          disabled={isLoading}
           onClick={() => onStatusChange("blocked")}
-          className="rounded-lg border border-rose-400/40 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/10"
+          className="rounded-lg border border-rose-400/40 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-45"
         >
           Block
         </button>
         <button
           type="button"
+          disabled={isLoading}
           onClick={() => onStatusChange("skipped")}
-          className="rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/5"
+          className="rounded-lg border border-white/15 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-45"
         >
           Skip
         </button>
       </div>
 
-      {completeDisabled ? (
+      {actionError ? (
+        <div className="flex items-start justify-between gap-2 rounded-lg border border-rose-400/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+          <p>{actionError}</p>
+          {onDismissError && (
+            <button type="button" onClick={onDismissError} className="shrink-0 text-rose-300 hover:text-white">
+              ✕
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      {!actionError && completeDisabled ? (
         <p className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-          This action is outbound-capable. Approval is required before completion.
+          This action is outbound-capable. Approve it first before marking complete.
         </p>
       ) : null}
     </Card>

@@ -1,21 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { ActionChannel, DailyAction, DailyActionStatus, DailyRollup } from "@aoe/shared-types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ActionChannel, DailyAction, DailyActionStatus, DailyRollup, RuleOf100Plan } from "@aoe/shared-types";
 import { Card } from "@aoe/ui";
 import { ActionDetailPanel } from "../../components/rule-of-100/action-detail-panel";
 import { ActionQueue } from "../../components/rule-of-100/action-queue";
 import { PlannerSummary } from "../../components/rule-of-100/planner-summary";
-import { dailyActions, mockApprovalRecords, ruleOf100Plan } from "../../lib/mock-data";
+import { type ApiError, ruleOf100Api } from "../../lib/rule-of-100-api";
 
 export default function RuleOf100Page() {
-  const [plan, setPlan] = useState(ruleOf100Plan);
-  const [actions, setActions] = useState<DailyAction[]>(dailyActions);
-  const [selectedActionId, setSelectedActionId] = useState<string | null>(dailyActions[0]?.id ?? null);
-  const [approvedActionIds, setApprovedActionIds] = useState<Set<string>>(
-    new Set(mockApprovalRecords.map((record) => record.actionId)),
-  );
+  const [plan, setPlan] = useState<RuleOf100Plan | null>(null);
+  const [actions, setActions] = useState<DailyAction[]>([]);
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [filter, setFilter] = useState<DailyActionStatus | "all">("all");
+  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [mutatingActionId, setMutatingActionId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const hasSelectedRef = useRef(false);
 
   const selectedAction = useMemo(
     () => actions.find((item) => item.id === selectedActionId) ?? null,
@@ -23,89 +25,143 @@ export default function RuleOf100Page() {
   );
 
   const rollup: DailyRollup = useMemo(() => {
+    const target = plan?.targetCount ?? 50;
     const completedCount = actions.filter((item) => item.status === "completed").length;
-    const pendingReviewCount = actions.filter((item) => item.status === "in_review").length;
-    const approvedCount = actions.filter((item) => item.status === "approved").length;
     const byChannel = actions.reduce<Partial<Record<ActionChannel, number>>>((acc, item) => {
       acc[item.channel] = (acc[item.channel] ?? 0) + 1;
       return acc;
     }, {});
-
     return {
-      date: plan.date,
-      targetCount: plan.targetCount,
+      date: plan?.date ?? "",
+      targetCount: target,
       completedCount,
-      progressPercent: Math.round((completedCount / Math.max(plan.targetCount, 1)) * 100),
-      pendingReviewCount,
-      approvedCount,
+      progressPercent: Math.round((completedCount / Math.max(target, 1)) * 100),
+      pendingReviewCount: actions.filter((item) => item.status === "in_review").length,
+      approvedCount: actions.filter((item) => item.status === "approved").length,
       completedApprovedCount: actions.filter(
-        (item) => item.status === "completed" && (!item.approvalRequired || approvedActionIds.has(item.id)),
+        (item) => item.status === "completed" && item.approvalRequired,
       ).length,
       byChannel,
     };
-  }, [actions, approvedActionIds, plan.targetCount]);
+  }, [actions, plan]);
+
+  const loadData = useCallback(async () => {
+    setLoadingInitial(true);
+    setLoadError(null);
+    try {
+      const [planData, actionsData] = await Promise.all([
+        ruleOf100Api.getPlan(),
+        ruleOf100Api.getActions(),
+      ]);
+      setPlan(planData);
+      setActions(actionsData);
+      if (!hasSelectedRef.current && actionsData.length > 0) {
+        setSelectedActionId(actionsData[0].id);
+        hasSelectedRef.current = true;
+      }
+    } catch (err) {
+      const apiErr = err as ApiError;
+      setLoadError(
+        apiErr.message ?? "Failed to load data. Is the FastAPI server running?",
+      );
+    } finally {
+      setLoadingInitial(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   function updateTargetCount(value: number) {
+    if (!plan) return;
     const safeValue = Math.min(Math.max(value || plan.minTarget, plan.minTarget), plan.maxTarget);
-    setPlan((prev) => ({ ...prev, targetCount: safeValue }));
+    setPlan((prev) => (prev ? { ...prev, targetCount: safeValue } : prev));
   }
 
   function updateAllocation(channel: ActionChannel, value: number) {
+    if (!plan) return;
     const safeValue = Math.max(0, Number.isFinite(value) ? value : 0);
-    setPlan((prev) => ({
-      ...prev,
-      allocation: {
-        ...prev.allocation,
-        [channel]: safeValue,
-      },
-    }));
-  }
-
-  function updateStatus(status: DailyActionStatus) {
-    if (!selectedActionId) {
-      return;
-    }
-    setActions((prev) =>
-      prev.map((item) => {
-        if (item.id !== selectedActionId) {
-          return item;
-        }
-        if (status === "completed" && item.approvalRequired && !approvedActionIds.has(item.id)) {
-          return item;
-        }
-        return { ...item, status };
-      }),
+    setPlan((prev) =>
+      prev ? { ...prev, allocation: { ...prev.allocation, [channel]: safeValue } } : prev,
     );
   }
 
-  function approveSelectedAction() {
-    if (!selectedActionId) {
-      return;
+  async function handleStatusChange(status: DailyActionStatus) {
+    if (!selectedActionId) return;
+    setMutatingActionId(selectedActionId);
+    setActionError(null);
+    try {
+      const updated = await ruleOf100Api.updateStatus(selectedActionId, status);
+      setActions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      setActionError((err as ApiError).message);
+    } finally {
+      setMutatingActionId(null);
     }
-    setApprovedActionIds((prev) => {
-      const next = new Set(prev);
-      next.add(selectedActionId);
-      return next;
-    });
-    setActions((prev) =>
-      prev.map((item) => (item.id === selectedActionId ? { ...item, status: "approved" } : item)),
+  }
+
+  async function handleApprove() {
+    if (!selectedActionId) return;
+    setMutatingActionId(selectedActionId);
+    setActionError(null);
+    try {
+      await ruleOf100Api.approveAction(selectedActionId);
+      setActions((prev) =>
+        prev.map((item) =>
+          item.id === selectedActionId ? { ...item, status: "approved" as DailyActionStatus } : item,
+        ),
+      );
+    } catch (err) {
+      setActionError((err as ApiError).message);
+    } finally {
+      setMutatingActionId(null);
+    }
+  }
+
+  async function handleComplete() {
+    if (!selectedActionId) return;
+    setMutatingActionId(selectedActionId);
+    setActionError(null);
+    try {
+      const updated = await ruleOf100Api.completeAction(selectedActionId);
+      setActions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      setActionError((err as ApiError).message);
+    } finally {
+      setMutatingActionId(null);
+    }
+  }
+
+  if (loadingInitial) {
+    return (
+      <div className="soft-grid flex min-h-screen items-center justify-center bg-mesh-gradient text-slate-100">
+        <p className="text-sm text-slate-300">Loading daily actions from API...</p>
+      </div>
     );
   }
 
-  function completeSelectedAction() {
-    if (!selectedActionId) {
-      return;
-    }
-    setActions((prev) =>
-      prev.map((item) => {
-        if (item.id !== selectedActionId) {
-          return item;
-        }
-        if (item.approvalRequired && !approvedActionIds.has(item.id)) {
-          return item;
-        }
-        return { ...item, status: "completed" };
-      }),
+  if (loadError) {
+    return (
+      <div className="soft-grid flex min-h-screen items-center justify-center bg-mesh-gradient px-6 text-slate-100">
+        <div className="max-w-lg space-y-4 rounded-2xl border border-rose-400/30 bg-rose-500/10 p-8">
+          <h2 className="[font-family:var(--font-sora)] text-xl font-semibold text-white">API unavailable</h2>
+          <p className="text-sm text-rose-200">{loadError}</p>
+          <p className="text-xs text-slate-300">
+            Start the API server:{" "}
+            <code className="rounded bg-white/10 px-1">
+              cd apps/api &amp;&amp; uvicorn app.main:app --reload
+            </code>
+          </p>
+          <button
+            type="button"
+            onClick={() => void loadData()}
+            className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -126,26 +182,34 @@ export default function RuleOf100Page() {
           </div>
         </header>
 
-        <PlannerSummary
-          plan={plan}
-          rollup={rollup}
-          onTargetCountChange={updateTargetCount}
-          onAllocationChange={updateAllocation}
-        />
+        {plan && (
+          <PlannerSummary
+            plan={plan}
+            rollup={rollup}
+            onTargetCountChange={updateTargetCount}
+            onAllocationChange={updateAllocation}
+          />
+        )}
 
         <section className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
           <ActionQueue
             actions={actions}
             selectedActionId={selectedActionId}
-            onSelect={setSelectedActionId}
+            onSelect={(id) => {
+              setSelectedActionId(id);
+              setActionError(null);
+            }}
             currentFilter={filter}
             onFilterChange={setFilter}
           />
           <ActionDetailPanel
             action={selectedAction}
-            onStatusChange={updateStatus}
-            onApprove={approveSelectedAction}
-            onComplete={completeSelectedAction}
+            onStatusChange={(status) => void handleStatusChange(status)}
+            onApprove={() => void handleApprove()}
+            onComplete={() => void handleComplete()}
+            isLoading={mutatingActionId === selectedActionId}
+            actionError={actionError}
+            onDismissError={() => setActionError(null)}
           />
         </section>
 
