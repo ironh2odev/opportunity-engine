@@ -8,16 +8,17 @@ import {
   Settings,
   Sparkles,
 } from "lucide-react";
+import Link from "next/link";
 
 const navItems = [
-  { label: "Daily Opportunities", icon: GaugeCircle },
-  { label: "Opportunity Pipeline", icon: Kanban },
-  { label: "Saved Opportunities", icon: FolderHeart },
-  { label: "Draft Applications", icon: PenSquare },
-  { label: "Outreach Queue", icon: Mail },
-  { label: "Tailoring Assistant", icon: Sparkles },
-  { label: "Knowledge Base", icon: BriefcaseBusiness },
-  { label: "Settings", icon: Settings },
+  { label: "Daily Opportunities", icon: GaugeCircle, href: "/" },
+  { label: "Rule of 100 Engine", icon: Kanban, href: "/rule-of-100" },
+  { label: "Saved Opportunities", icon: FolderHeart, href: "#" },
+  { label: "Draft Applications", icon: PenSquare, href: "#" },
+  { label: "Outreach Queue", icon: Mail, href: "#" },
+  { label: "Tailoring Assistant", icon: Sparkles, href: "#" },
+  { label: "Knowledge Base", icon: BriefcaseBusiness, href: "#" },
+  { label: "Settings", icon: Settings, href: "#" },
 ];
 
 export function Sidebar() {
@@ -34,19 +35,19 @@ export function Sidebar() {
       </div>
 
       <nav className="mt-8 space-y-2">
-        {navItems.map(({ label, icon: Icon }, idx) => (
-          <button
+        {navItems.map(({ label, icon: Icon, href }, idx) => (
+          <Link
             key={label}
+            href={href}
             className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${
               idx === 0
                 ? "bg-white/10 text-white"
                 : "text-slate-300 hover:bg-white/5 hover:text-white"
             }`}
-            type="button"
           >
             <Icon className="h-4 w-4" />
             <span>{label}</span>
-          </button>
+          </Link>
         ))}
       </nav>
 

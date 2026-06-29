@@ -7,6 +7,7 @@ import { StatsStrip } from "../components/dashboard/stats-strip";
 import { TailoringPanel } from "../components/dashboard/tailoring-panel";
 import { opportunities, pipelineSummary, tailoringDrafts } from "../lib/mock-data";
 import { Card } from "@aoe/ui";
+import Link from "next/link";
 
 const queueSections = [
   "Opportunity Pipeline",
@@ -43,6 +44,26 @@ export default function HomePage() {
             </header>
 
             <StatsStrip summary={pipelineSummary} />
+
+            <Card className="border-accent/25 bg-accent/10">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-accent/90">New workflow</p>
+                  <h2 className="mt-1 [font-family:var(--font-sora)] text-xl font-semibold text-white">
+                    Rule of 100 Daily Actions
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-300">
+                    Draft-only planning for daily opportunity actions with explicit human approval gates.
+                  </p>
+                </div>
+                <Link
+                  href="/rule-of-100"
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-200"
+                >
+                  Open Rule of 100 dashboard
+                </Link>
+              </div>
+            </Card>
 
             <section>
               <div className="mb-4 flex items-center justify-between">
