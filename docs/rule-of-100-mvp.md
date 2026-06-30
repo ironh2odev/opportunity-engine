@@ -71,3 +71,40 @@ Never include:
 - Each action retains source lead linkage for traceability across restarts.
 - Human approval remains mandatory for outbound-capable completion.
 - Manual execution only: no auto-send, no auto-apply, no scraping.
+
+## Queue filters
+
+The Rule of 100 queue includes frontend filters for:
+
+- All
+- Personal Mode
+- Mock Demo
+- Jobs
+- Clients
+- Comments
+- Follow-ups
+- Applications
+- Outreach
+- Needs approval
+- Approved
+- Ready to complete
+- Completed
+- Skipped/blocked
+
+Personal Mode and Mock Demo actions are clearly labeled to preserve public-safe and private-local separation.
+
+## AI Assist mode (draft-only)
+
+- Endpoint: `POST /ai/draft-action`
+- Purpose: generate optional human-reviewed drafting assistance for queue actions.
+- AI Assist never sends messages, never applies to jobs, and never changes action status.
+- If `OPENAI_API_KEY` is present locally, API can call OpenAI.
+- If no key is present, API returns deterministic mock drafts so workflows still function.
+- Human approval remains mandatory before outbound-capable actions can be completed.
+
+Job-related drafting safety copy:
+
+- Reframe real experience only.
+- Do not invent experience.
+- Human review required before use.
+- CV and cover letter drafts are starting points, not final documents.

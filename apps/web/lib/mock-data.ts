@@ -310,6 +310,9 @@ export const dailyActions: DailyAction[] = sequence.map((channel, index) => {
     sourceLeadName: null,
     sourceLeadOrganisation: null,
     privateMode: false,
+    editedBy: null,
+    editedAt: null,
+    draftSource: null,
   };
 });
 

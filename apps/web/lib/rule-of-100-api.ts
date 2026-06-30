@@ -1,4 +1,8 @@
 import type {
+  AIDraftActionInput,
+  AIDraftActionResult,
+  ActionDraftRevision,
+  ActionDraftUpdateInput,
   ApprovalRecord,
   DailyAction,
   DailyActionStatus,
@@ -111,5 +115,49 @@ export const ruleOf100Api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
+  },
+
+  draftAction(payload: AIDraftActionInput): Promise<AIDraftActionResult> {
+    return apiFetch<AIDraftActionResult>("/ai/draft-action", {
+      method: "POST",
+      body: JSON.stringify({
+        action_id: payload.actionId,
+        action_type: payload.actionType,
+        channel: payload.channel,
+        opportunity_type: payload.opportunityType,
+        target_name: payload.targetName,
+        target_role: payload.targetRole,
+        target_organisation: payload.targetOrganisation,
+        suggested_action: payload.suggestedAction,
+        existing_suggested_message: payload.existingSuggestedMessage,
+        rationale: payload.rationale,
+        proof_to_reference: payload.proofToReference,
+        source_type: payload.sourceType,
+        source_lead_id: payload.sourceLeadId,
+        user_tone: payload.userTone,
+        constraints: payload.constraints,
+      }),
+    });
+  },
+
+  updateDraft(actionId: string, payload: ActionDraftUpdateInput): Promise<DailyAction> {
+    return apiFetch<DailyAction>(`/rule-of-100/actions/${encodeURIComponent(actionId)}/draft`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        draft_message: payload.draftMessage,
+        short_version: payload.shortVersion,
+        edited_by: payload.editedBy,
+        source: payload.source,
+        confidence_label: payload.confidenceLabel,
+        risks_or_gaps: payload.risksOrGaps ?? [],
+        review_notes: payload.reviewNotes ?? [],
+      }),
+    });
+  },
+
+  getDraftRevisions(actionId: string): Promise<ActionDraftRevision[]> {
+    return apiFetch<ActionDraftRevision[]>(
+      `/rule-of-100/actions/${encodeURIComponent(actionId)}/draft-revisions`,
+    );
   },
 };

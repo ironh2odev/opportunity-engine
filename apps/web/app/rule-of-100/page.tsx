@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  AIDraftActionResult,
+  ActionDraftRevision,
   ActionChannel,
   ApprovalRecord,
   DailyAction,
@@ -11,7 +13,7 @@ import type {
 } from "@aoe/shared-types";
 import { Card } from "@aoe/ui";
 import { ActionDetailPanel } from "../../components/rule-of-100/action-detail-panel";
-import { ActionQueue } from "../../components/rule-of-100/action-queue";
+import { ActionQueue, type RuleQueueFilter } from "../../components/rule-of-100/action-queue";
 import { PlannerSummary } from "../../components/rule-of-100/planner-summary";
 import { type ApiError, ruleOf100Api } from "../../lib/rule-of-100-api";
 
@@ -21,13 +23,15 @@ export default function RuleOf100Page() {
   const [rollup, setRollup] = useState<DailyRollup | null>(null);
   const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<DailyActionStatus | "all">("all");
+  const [filter, setFilter] = useState<RuleQueueFilter>("all");
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mutatingActionId, setMutatingActionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [planSaving, setPlanSaving] = useState(false);
   const [planError, setPlanError] = useState<string | null>(null);
+  const [draftRevisions, setDraftRevisions] = useState<ActionDraftRevision[]>([]);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
 
   const selectedAction = useMemo(
     () => actions.find((item) => item.id === selectedActionId) ?? null,
@@ -67,6 +71,26 @@ export default function RuleOf100Page() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    async function loadDraftHistory() {
+      if (!selectedActionId) {
+        setDraftRevisions([]);
+        setDraftSavedAt(null);
+        return;
+      }
+      try {
+        const history = await ruleOf100Api.getDraftRevisions(selectedActionId);
+        setDraftRevisions(history);
+      } catch {
+        setDraftRevisions([]);
+      }
+      const selected = actions.find((item) => item.id === selectedActionId);
+      setDraftSavedAt(selected?.editedAt ?? null);
+    }
+
+    void loadDraftHistory();
+  }, [actions, selectedActionId]);
 
   const refreshRollup = useCallback(async () => {
     setRollup(await ruleOf100Api.getRollup());
@@ -171,6 +195,50 @@ export default function RuleOf100Page() {
     }
   }
 
+  async function handleGenerateAiDraft(action: DailyAction): Promise<AIDraftActionResult> {
+    return ruleOf100Api.draftAction({
+      actionId: action.id,
+      actionType: action.actionType,
+      channel: action.channel,
+      opportunityType: action.opportunityType,
+      targetName: action.targetName,
+      targetRole: action.targetRole,
+      targetOrganisation: action.targetOrganisation,
+      suggestedAction: action.suggestedAction,
+      existingSuggestedMessage: action.suggestedMessage,
+      rationale: action.rationale,
+      proofToReference: action.proofToReference,
+      sourceType: action.sourceType,
+      sourceLeadId: action.sourceLeadId,
+      userTone: "thoughtful, clear, humble, premium, practical, not hype",
+      constraints: [
+        "Draft only.",
+        "No auto-send.",
+        "No auto-apply.",
+        "No scraping.",
+        "Human approval required before use.",
+      ],
+    });
+  }
+
+  async function handleUseAiDraft(draft: AIDraftActionResult): Promise<string | null> {
+    if (!selectedActionId) return null;
+    const updated = await ruleOf100Api.updateDraft(selectedActionId, {
+      draftMessage: draft.draftMessage,
+      shortVersion: draft.shortVersion,
+      editedBy: "human.operator",
+      source: "ai_assist",
+      confidenceLabel: draft.confidenceLabel,
+      risksOrGaps: draft.risksOrGaps,
+      reviewNotes: draft.reviewNotes,
+    });
+    setActions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    const history = await ruleOf100Api.getDraftRevisions(selectedActionId);
+    setDraftRevisions(history);
+    setDraftSavedAt(updated.editedAt ?? null);
+    return updated.editedAt ?? null;
+  }
+
   if (loadingInitial) {
     return (
       <div className="soft-grid flex min-h-screen items-center justify-center bg-mesh-gradient text-slate-100">
@@ -253,6 +321,10 @@ export default function RuleOf100Page() {
             onStatusChange={(status) => void handleStatusChange(status)}
             onApprove={() => void handleApprove()}
             onComplete={() => void handleComplete()}
+            onGenerateAiDraft={(action) => handleGenerateAiDraft(action)}
+            onUseDraft={handleUseAiDraft}
+            draftRevisions={draftRevisions}
+            draftSavedAt={draftSavedAt}
             isLoading={mutatingActionId === selectedActionId}
             actionError={actionError}
             onDismissError={() => setActionError(null)}

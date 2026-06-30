@@ -2,12 +2,14 @@ from datetime import datetime
 from typing import Optional
 
 from app.schemas import (
+    ActionDraftRevision,
     ActionChannel,
     ApprovalRecord,
     ConfidenceSignal,
     DailyAction,
     DailyActionStatus,
     DailyRollup,
+    DraftRevisionSource,
     Opportunity,
     PipelineSummary,
     RuleOf100Plan,
@@ -324,6 +326,42 @@ for idx, action in enumerate(RULE_OF_100_ACTIONS, start=1):
                 note="Approved for manual execution. Do not auto-send.",
             )
         )
+
+
+DRAFT_REVISIONS: list[ActionDraftRevision] = []
+
+
+def add_mock_draft_revision(
+    *,
+    action_id: str,
+    draft_message: str,
+    short_version: Optional[str],
+    source: DraftRevisionSource,
+    confidence_label: Optional[str],
+    risks_or_gaps: list[str],
+    review_notes: list[str],
+    created_by: str,
+) -> ActionDraftRevision:
+    revision = ActionDraftRevision(
+        id=f"rev_{len(DRAFT_REVISIONS) + 1:04d}",
+        action_id=action_id,
+        draft_message=draft_message,
+        short_version=short_version,
+        source=source,
+        confidence_label=confidence_label,
+        risks_or_gaps=risks_or_gaps,
+        review_notes=review_notes,
+        created_at=datetime.utcnow(),
+        created_by=created_by,
+    )
+    DRAFT_REVISIONS.append(revision)
+    return revision
+
+
+def list_mock_draft_revisions(action_id: str) -> list[ActionDraftRevision]:
+    revisions = [item for item in DRAFT_REVISIONS if item.action_id == action_id]
+    revisions.sort(key=lambda item: item.created_at, reverse=True)
+    return revisions
 
 
 def has_approval(action_id: str) -> bool:

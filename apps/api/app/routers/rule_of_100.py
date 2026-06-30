@@ -6,14 +6,16 @@ from fastapi import APIRouter, HTTPException
 from app import personal_store
 from app.mock_data import (
     APPROVAL_RECORDS,
+    add_mock_draft_revision,
+    list_mock_draft_revisions,
     RULE_OF_100_ACTIONS,
-    get_daily_rollup,
     get_rule_of_100_plan,
-    has_approval,
     update_rule_of_100_plan,
 )
 from app.schemas import (
     ActionApprovalRequest,
+    ActionDraftRevision,
+    ActionDraftUpdateRequest,
     ActionStatusUpdateRequest,
     ApprovalRecord,
     DailyAction,
@@ -74,6 +76,9 @@ def _personal_action_to_daily_action(action, lead) -> DailyAction:
         source_lead_name=_personal_source_label(lead),
         source_lead_organisation=lead.organisation or None,
         private_mode=True,
+        edited_by=action.edited_by,
+        edited_at=action.edited_at,
+        draft_source=action.draft_source,
     )
 
 
@@ -81,6 +86,12 @@ def _mock_action_to_daily_action(action: DailyAction) -> DailyAction:
     action.source_type = "mock_demo"
     action.private_mode = False
     return action
+
+
+def _list_draft_revisions(action_source: str, action_id: str) -> list[ActionDraftRevision]:
+    if action_source == "mock":
+        return list_mock_draft_revisions(action_id)
+    return personal_store.list_rule_action_revisions(action_id)
 
 
 def _list_personal_actions(date: Optional[str] = None) -> list[DailyAction]:
@@ -247,6 +258,64 @@ def update_action_status(
     if lead is None:
         raise HTTPException(status_code=404, detail="Action source lead not found")
     return _personal_action_to_daily_action(updated, lead)
+
+
+@router.patch("/actions/{action_id}/draft", response_model=DailyAction)
+def update_action_draft(
+    action_id: str,
+    payload: ActionDraftUpdateRequest,
+) -> DailyAction:
+    action_source, action = _find_action(action_id)
+
+    if action_source == "mock":
+        for item in RULE_OF_100_ACTIONS:
+            if item.id == action_id:
+                now = datetime.utcnow()
+                item.suggested_message = payload.draft_message
+                item.edited_by = payload.edited_by
+                item.edited_at = now
+                item.draft_source = payload.source
+                add_mock_draft_revision(
+                    action_id=action_id,
+                    draft_message=payload.draft_message,
+                    short_version=payload.short_version,
+                    source=payload.source,
+                    confidence_label=payload.confidence_label,
+                    risks_or_gaps=payload.risks_or_gaps,
+                    review_notes=payload.review_notes,
+                    created_by=payload.edited_by,
+                )
+                return item
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    updated = personal_store.update_rule_action_draft(
+        action_id,
+        draft_message=payload.draft_message,
+        edited_by=payload.edited_by,
+        source=payload.source,
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Action not found")
+    personal_store.add_rule_action_revision(
+        action_id,
+        draft_message=payload.draft_message,
+        short_version=payload.short_version,
+        source=payload.source,
+        confidence_label=payload.confidence_label,
+        risks_or_gaps=payload.risks_or_gaps,
+        review_notes=payload.review_notes,
+        created_by=payload.edited_by,
+    )
+    lead = personal_store.get_lead(updated.source_lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Action source lead not found")
+    return _personal_action_to_daily_action(updated, lead)
+
+
+@router.get("/actions/{action_id}/draft-revisions", response_model=list[ActionDraftRevision])
+def get_action_draft_revisions(action_id: str) -> list[ActionDraftRevision]:
+    action_source, action = _find_action(action_id)
+    return _list_draft_revisions(action_source, action_id)
 
 
 @router.post("/actions/{action_id}/approve", response_model=ApprovalRecord)

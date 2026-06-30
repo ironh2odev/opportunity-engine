@@ -26,7 +26,12 @@ export function ActionCard({
               <span className="rounded-full bg-cyan-500/15 px-2 py-1 text-cyan-200">Private lead action</span>
               <span className="rounded-full bg-white/10 px-2 py-1 text-slate-200">From Personal Mode</span>
             </div>
-          ) : null}
+          ) : (
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
+              <span className="rounded-full bg-violet-500/15 px-2 py-1 text-violet-200">Mock demo action</span>
+              <span className="rounded-full bg-white/10 px-2 py-1 text-slate-200">Public-safe dataset</span>
+            </div>
+          )}
         </div>
         <StatusBadge status={action.status} />
       </div>

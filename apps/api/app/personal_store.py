@@ -8,7 +8,9 @@ from uuid import uuid4
 
 from app.schemas import (
     ActionChannel,
+    ActionDraftRevision,
     DailyActionStatus,
+    DraftRevisionSource,
     PersonalLead,
     PersonalLeadCreateRequest,
     PersonalRuleAction,
@@ -82,6 +84,9 @@ def _connect() -> sqlite3.Connection:
             status text not null,
             approval_required integer not null,
             follow_up_date text,
+            edited_by text,
+            edited_at text,
+            draft_source text,
             created_at text not null,
             updated_at text not null,
             foreign key (source_lead_id) references personal_leads(id) on delete cascade
@@ -100,6 +105,34 @@ def _connect() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        create table if not exists personal_rule_action_revisions (
+            id text primary key,
+            action_id text not null,
+            draft_message text not null,
+            short_version text,
+            source text not null,
+            confidence_label text,
+            risks_or_gaps text not null default '[]',
+            review_notes text not null default '[]',
+            created_at text not null,
+            created_by text not null,
+            foreign key (action_id) references personal_rule_actions(id) on delete cascade
+        )
+        """
+    )
+    for column_name, column_type in [
+        ("edited_by", "text"),
+        ("edited_at", "text"),
+        ("draft_source", "text"),
+    ]:
+        try:
+            conn.execute(
+                f"alter table personal_rule_actions add column {column_name} {column_type}"
+            )
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     return conn
 
@@ -330,8 +363,26 @@ def _to_rule_action_model(row: sqlite3.Row) -> PersonalRuleAction:
         status=row["status"],
         approval_required=bool(row["approval_required"]),
         follow_up_date=row["follow_up_date"],
+        edited_by=row["edited_by"],
+        edited_at=row["edited_at"],
+        draft_source=row["draft_source"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
+    )
+
+
+def _to_rule_action_revision_model(row: sqlite3.Row) -> ActionDraftRevision:
+    return ActionDraftRevision(
+        id=row["id"],
+        action_id=row["action_id"],
+        draft_message=row["draft_message"],
+        short_version=row["short_version"],
+        source=row["source"],
+        confidence_label=row["confidence_label"],
+        risks_or_gaps=json.loads(row["risks_or_gaps"] or "[]"),
+        review_notes=json.loads(row["review_notes"] or "[]"),
+        created_at=row["created_at"],
+        created_by=row["created_by"],
     )
 
 
@@ -374,6 +425,105 @@ def update_rule_action_status(action_id: str, status: DailyActionStatus) -> Opti
         conn.close()
 
     return get_rule_action(action_id)
+
+
+def update_rule_action_draft(
+    action_id: str,
+    *,
+    draft_message: str,
+    edited_by: str,
+    source: DraftRevisionSource,
+) -> Optional[PersonalRuleAction]:
+    action = get_rule_action(action_id)
+    if action is None:
+        return None
+
+    conn = _connect()
+    try:
+        now = _now_iso()
+        conn.execute(
+            """
+            update personal_rule_actions
+            set suggested_message = ?, edited_by = ?, edited_at = ?, draft_source = ?, updated_at = ?
+            where id = ?
+            """,
+            [draft_message, edited_by, now, source, now, action_id],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return get_rule_action(action_id)
+
+
+def add_rule_action_revision(
+    action_id: str,
+    *,
+    draft_message: str,
+    short_version: Optional[str],
+    source: DraftRevisionSource,
+    confidence_label: Optional[str],
+    risks_or_gaps: list[str],
+    review_notes: list[str],
+    created_by: str,
+) -> ActionDraftRevision:
+    revision = ActionDraftRevision(
+        id=f"rev_{uuid4().hex[:12]}",
+        action_id=action_id,
+        draft_message=draft_message,
+        short_version=short_version,
+        source=source,
+        confidence_label=confidence_label,
+        risks_or_gaps=risks_or_gaps,
+        review_notes=review_notes,
+        created_at=_now_iso(),
+        created_by=created_by,
+    )
+
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            insert into personal_rule_action_revisions (
+                id, action_id, draft_message, short_version, source, confidence_label,
+                risks_or_gaps, review_notes, created_at, created_by
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                revision.id,
+                revision.action_id,
+                revision.draft_message,
+                revision.short_version,
+                revision.source,
+                revision.confidence_label,
+                json.dumps(revision.risks_or_gaps),
+                json.dumps(revision.review_notes),
+                revision.created_at,
+                revision.created_by,
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return revision
+
+
+def list_rule_action_revisions(action_id: str) -> list[ActionDraftRevision]:
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            select *
+            from personal_rule_action_revisions
+            where action_id = ?
+            order by created_at desc
+            """,
+            [action_id],
+        ).fetchall()
+        return [_to_rule_action_revision_model(row) for row in rows]
+    finally:
+        conn.close()
 
 
 def _to_rule_action_approval_model(row: sqlite3.Row):
@@ -493,6 +643,9 @@ def create_rule_action(
         status=status,
         approval_required=approval_required,
         follow_up_date=follow_up_date,
+        edited_by=None,
+        edited_at=None,
+        draft_source=None,
         created_at=now,
         updated_at=now,
     )
@@ -504,8 +657,8 @@ def create_rule_action(
             insert into personal_rule_actions (
                 id, source_lead_id, channel, action_type, suggested_action, suggested_message,
                 rationale, proof_to_reference, status, approval_required, follow_up_date,
-                created_at, updated_at
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                edited_by, edited_at, draft_source, created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 action.id,
@@ -519,6 +672,9 @@ def create_rule_action(
                 action.status,
                 1 if action.approval_required else 0,
                 action.follow_up_date,
+                action.edited_by,
+                action.edited_at,
+                action.draft_source,
                 action.created_at,
                 action.updated_at,
             ],

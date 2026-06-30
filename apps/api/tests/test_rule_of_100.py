@@ -15,12 +15,14 @@ class RuleOf100ApiTests(unittest.TestCase):
         self.plan_backup = mock_data.RULE_OF_100_PLAN.model_copy(deep=True)
         self.actions_backup = copy.deepcopy(mock_data.RULE_OF_100_ACTIONS)
         self.approvals_backup = copy.deepcopy(mock_data.APPROVAL_RECORDS)
+        self.revisions_backup = copy.deepcopy(mock_data.DRAFT_REVISIONS)
 
     def tearDown(self) -> None:
         for field_name, value in self.plan_backup.model_dump().items():
             setattr(mock_data.RULE_OF_100_PLAN, field_name, copy.deepcopy(value))
         mock_data.RULE_OF_100_ACTIONS[:] = copy.deepcopy(self.actions_backup)
         mock_data.APPROVAL_RECORDS[:] = copy.deepcopy(self.approvals_backup)
+        mock_data.DRAFT_REVISIONS[:] = copy.deepcopy(self.revisions_backup)
         if "OE_PERSONAL_DB_PATH" in os.environ:
             del os.environ["OE_PERSONAL_DB_PATH"]
 
@@ -187,6 +189,78 @@ class RuleOf100ApiTests(unittest.TestCase):
         complete_after_approval = client.post(f"/rule-of-100/actions/{action_id}/complete")
         self.assertEqual(complete_after_approval.status_code, 200)
         self.assertEqual(complete_after_approval.json()["status"], "completed")
+
+    def test_saving_ai_draft_updates_action_message(self) -> None:
+        action_id = self._find_action(approval_required=True)
+        save_response = self.client.patch(
+            f"/rule-of-100/actions/{action_id}/draft",
+            json={
+                "draft_message": "Updated AI draft message for review.",
+                "short_version": "Updated short draft.",
+                "edited_by": "human.operator",
+                "source": "ai_assist",
+                "confidence_label": "medium",
+                "risks_or_gaps": ["Need one concrete proof point."],
+                "review_notes": ["Needs refinement"],
+            },
+        )
+        self.assertEqual(save_response.status_code, 200)
+        self.assertEqual(save_response.json()["suggested_message"], "Updated AI draft message for review.")
+        self.assertEqual(save_response.json()["draft_source"], "ai_assist")
+
+    def test_saving_draft_does_not_approve_or_complete_action(self) -> None:
+        action_id = self._find_action(approval_required=True)
+        action_before = self.client.get("/rule-of-100/actions").json()
+        before = next(item for item in action_before if item["id"] == action_id)
+
+        save_response = self.client.patch(
+            f"/rule-of-100/actions/{action_id}/draft",
+            json={
+                "draft_message": "Persist this draft only.",
+                "edited_by": "human.operator",
+                "source": "manual_edit",
+            },
+        )
+        self.assertEqual(save_response.status_code, 200)
+
+        action_after = self.client.get("/rule-of-100/actions").json()
+        after = next(item for item in action_after if item["id"] == action_id)
+        self.assertEqual(after["status"], before["status"])
+
+    def test_saving_draft_creates_revision(self) -> None:
+        action_id = self._find_action(approval_required=False)
+        save_response = self.client.patch(
+            f"/rule-of-100/actions/{action_id}/draft",
+            json={
+                "draft_message": "First persisted revision.",
+                "short_version": "First revision short.",
+                "edited_by": "human.operator",
+                "source": "ai_assist",
+                "confidence_label": "high",
+                "risks_or_gaps": ["Could be more specific"],
+                "review_notes": ["Consider grounding this with an example"],
+            },
+        )
+        self.assertEqual(save_response.status_code, 200)
+
+        history_response = self.client.get(f"/rule-of-100/actions/{action_id}/draft-revisions")
+        self.assertEqual(history_response.status_code, 200)
+        self.assertGreaterEqual(len(history_response.json()), 1)
+        latest = history_response.json()[0]
+        self.assertEqual(latest["action_id"], action_id)
+        self.assertEqual(latest["source"], "ai_assist")
+
+    def test_invalid_action_id_for_draft_returns_clear_error(self) -> None:
+        save_response = self.client.patch(
+            "/rule-of-100/actions/action_missing/draft",
+            json={
+                "draft_message": "Should fail",
+                "edited_by": "human.operator",
+                "source": "manual_edit",
+            },
+        )
+        self.assertEqual(save_response.status_code, 404)
+        self.assertIn("Action", save_response.json()["detail"])
 
 
 if __name__ == "__main__":

@@ -55,6 +55,13 @@ class ConfidenceLabel(str, Enum):
     high = "high"
 
 
+class DraftRevisionSource(str, Enum):
+    ai_assist = "ai_assist"
+    manual_edit = "manual_edit"
+    imported = "imported"
+    mock = "mock"
+
+
 class PersonalOpportunityType(str, Enum):
     job = "job"
     client = "client"
@@ -165,6 +172,9 @@ class DailyAction(BaseModel):
     source_lead_name: Optional[str] = None
     source_lead_organisation: Optional[str] = None
     private_mode: bool = False
+    edited_by: Optional[str] = None
+    edited_at: Optional[datetime] = None
+    draft_source: Optional[DraftRevisionSource] = None
 
 
 class ApprovalRecord(BaseModel):
@@ -198,6 +208,29 @@ class ActionApprovalRequest(BaseModel):
 class RuleOf100PlanUpdateRequest(BaseModel):
     target_count: Optional[int] = Field(default=None, ge=50, le=100)
     allocation: Optional[dict[ActionChannel, int]] = None
+
+
+class ActionDraftUpdateRequest(BaseModel):
+    draft_message: str
+    short_version: Optional[str] = None
+    edited_by: str = "human.operator"
+    source: DraftRevisionSource = DraftRevisionSource.manual_edit
+    confidence_label: Optional[ConfidenceLabel] = None
+    risks_or_gaps: list[str] = []
+    review_notes: list[str] = []
+
+
+class ActionDraftRevision(BaseModel):
+    id: str
+    action_id: str
+    draft_message: str
+    short_version: Optional[str] = None
+    source: DraftRevisionSource
+    confidence_label: Optional[ConfidenceLabel] = None
+    risks_or_gaps: list[str] = []
+    review_notes: list[str] = []
+    created_at: datetime
+    created_by: str = "human.operator"
 
 
 class PersonalLead(BaseModel):
@@ -294,3 +327,33 @@ class PersonalRuleAction(BaseModel):
     follow_up_date: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    edited_by: Optional[str] = None
+    edited_at: Optional[datetime] = None
+    draft_source: Optional[DraftRevisionSource] = None
+
+
+class AIDraftActionRequest(BaseModel):
+    action_id: str
+    action_type: str
+    channel: ActionChannel
+    opportunity_type: OpportunityType
+    target_name: str
+    target_role: str
+    target_organisation: str
+    suggested_action: str
+    existing_suggested_message: str
+    rationale: str
+    proof_to_reference: str
+    source_type: str
+    source_lead_id: Optional[str] = None
+    user_tone: str = "thoughtful, clear, humble, premium, practical, not hype"
+    constraints: list[str] = []
+
+
+class AIDraftActionResponse(BaseModel):
+    draft_message: str
+    short_version: Optional[str] = None
+    reasoning_summary: str
+    risks_or_gaps: list[str]
+    confidence_label: ConfidenceLabel
+    review_notes: list[str]

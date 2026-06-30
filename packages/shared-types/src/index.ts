@@ -39,6 +39,8 @@ export type ActionChannel =
 
 export type ConfidenceLabel = "low" | "medium" | "high";
 
+export type DraftRevisionSource = "ai_assist" | "manual_edit" | "imported" | "mock";
+
 export type PersonalOpportunityType =
   | "job"
   | "client"
@@ -120,6 +122,9 @@ export interface DailyAction {
   sourceLeadName: string | null;
   sourceLeadOrganisation: string | null;
   privateMode: boolean;
+  editedBy: string | null;
+  editedAt: string | null;
+  draftSource: DraftRevisionSource | null;
 }
 
 export interface ApprovalRecord {
@@ -209,4 +214,54 @@ export interface PipelineSummary {
   total: number;
   byStatus: Record<OpportunityStatus, number>;
   byCategory: Record<OpportunityCategory, number>;
+}
+
+export interface AIDraftActionInput {
+  actionId: string;
+  actionType: string;
+  channel: ActionChannel;
+  opportunityType: OpportunityType;
+  targetName: string;
+  targetRole: string;
+  targetOrganisation: string;
+  suggestedAction: string;
+  existingSuggestedMessage: string;
+  rationale: string;
+  proofToReference: string;
+  sourceType: "mock_demo" | "personal_lead";
+  sourceLeadId?: string | null;
+  userTone: string;
+  constraints: string[];
+}
+
+export interface AIDraftActionResult {
+  draftMessage: string;
+  shortVersion: string | null;
+  reasoningSummary: string;
+  risksOrGaps: string[];
+  confidenceLabel: ConfidenceLabel;
+  reviewNotes: string[];
+}
+
+export interface ActionDraftUpdateInput {
+  draftMessage: string;
+  shortVersion?: string | null;
+  editedBy: string;
+  source: DraftRevisionSource;
+  confidenceLabel?: ConfidenceLabel | null;
+  risksOrGaps?: string[];
+  reviewNotes?: string[];
+}
+
+export interface ActionDraftRevision {
+  id: string;
+  actionId: string;
+  draftMessage: string;
+  shortVersion: string | null;
+  source: DraftRevisionSource;
+  confidenceLabel: ConfidenceLabel | null;
+  risksOrGaps: string[];
+  reviewNotes: string[];
+  createdAt: string;
+  createdBy: string;
 }
