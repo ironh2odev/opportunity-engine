@@ -502,10 +502,10 @@ export default function PersonalLeadsPage() {
                   className="h-28 rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-xs"
                 />
                 <p className="text-xs text-slate-400">
-                  This version supports pasted text and .txt upload. PDF/DOCX parsing is planned next.
+                  Supported formats: .txt, .pdf, .docx. Files are parsed locally in private mode.
                 </p>
                 <p className="text-xs text-slate-400">
-                  AI-assisted mode is optional and review-first. If unavailable, extraction falls back to local mode.
+                  Review before saving. AI-assisted mode is optional and review-first. If unavailable, extraction falls back to local mode.
                 </p>
                 <button
                   disabled={careerExtractBusy || (!careerImportText.trim() && !careerImportFile)}

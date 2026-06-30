@@ -3,7 +3,11 @@ import os
 import re
 import urllib.error
 import urllib.request
+from io import BytesIO
 from typing import Optional
+
+from docx import Document
+from pypdf import PdfReader
 
 from app.schemas import (
     CareerContextExtractionMode,
@@ -65,6 +69,39 @@ INDUSTRY_KEYWORDS = {
     "marketplace": "Marketplace",
     "ai": "AI",
 }
+
+
+def _extract_pdf_text(content: bytes) -> str:
+    try:
+        reader = PdfReader(BytesIO(content))
+        chunks: list[str] = []
+        for page in reader.pages:
+            page_text = page.extract_text() or ""
+            if page_text.strip():
+                chunks.append(page_text.strip())
+        return "\n".join(chunks)
+    except Exception as exc:
+        raise ValueError("Could not read PDF file. Ensure the file is valid and not encrypted.") from exc
+
+
+def _extract_docx_text(content: bytes) -> str:
+    try:
+        doc = Document(BytesIO(content))
+        chunks = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+        return "\n".join(chunks)
+    except Exception as exc:
+        raise ValueError("Could not read DOCX file. Ensure the file is valid and not corrupted.") from exc
+
+
+def extract_text_from_uploaded_file(file_name: str, content: bytes) -> str:
+    lower_name = file_name.lower()
+    if lower_name.endswith(".txt"):
+        return content.decode("utf-8", errors="replace")
+    if lower_name.endswith(".pdf"):
+        return _extract_pdf_text(content)
+    if lower_name.endswith(".docx"):
+        return _extract_docx_text(content)
+    raise ValueError("Unsupported file type. Supported types: .txt, .pdf, .docx")
 
 
 def _normalize_lines(text: str) -> list[str]:

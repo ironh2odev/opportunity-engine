@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app import personal_store
 from app.mock_data import OUTBOUND_CHANNELS
-from app.services.career_context_extractor import extract_career_context
+from app.services.career_context_extractor import extract_career_context, extract_text_from_uploaded_file
 from app.services.capture_assistant import ALLOWED_SOURCE_TYPES, extract_from_text
 from app.schemas import (
     ActionChannel,
@@ -204,13 +204,6 @@ def put_career_context(payload: CareerContextUpdateRequest) -> CareerContext:
     return personal_store.update_career_context(payload)
 
 
-def _decode_uploaded_cv_text(file_name: str, content: bytes) -> str:
-    lower_name = file_name.lower()
-    if lower_name.endswith(".txt"):
-        return content.decode("utf-8", errors="replace")
-    raise ValueError("Unsupported file type. Use pasted text or .txt for this version.")
-
-
 @career_context_router.post("/career-context/extract", response_model=CareerContextExtractionResponse)
 async def extract_career_context_route(
     raw_cv_text: str = Form(default=""),
@@ -218,14 +211,21 @@ async def extract_career_context_route(
     cv_file: UploadFile | None = File(default=None),
 ) -> CareerContextExtractionResponse:
     text = raw_cv_text or ""
+    from_file = False
     if cv_file is not None:
         try:
             content = await cv_file.read()
-            text = _decode_uploaded_cv_text(cv_file.filename or "", content)
+            text = extract_text_from_uploaded_file(cv_file.filename or "", content)
+            from_file = True
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if not text.strip():
+        if from_file:
+            raise HTTPException(
+                status_code=400,
+                detail="Extracted CV text is empty. Provide a file with readable text.",
+            )
         raise HTTPException(status_code=400, detail="CV text is required")
 
     return extract_career_context(text, extraction_mode)

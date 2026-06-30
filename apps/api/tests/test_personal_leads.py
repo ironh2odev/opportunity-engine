@@ -1,7 +1,10 @@
 import os
 import tempfile
 import unittest
+from io import BytesIO
+from unittest.mock import patch
 
+from docx import Document
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -207,6 +210,70 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
                     "text/plain",
                 )
             },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("suggested_career_context", response.json())
+
+    def test_career_context_extract_rejects_unsupported_file_type(self) -> None:
+        response = self.client.post(
+            "/personal/career-context/extract",
+            data={"extraction_mode": "local"},
+            files={"cv_file": ("cv.md", "# my cv", "text/markdown")},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Unsupported file type", response.json()["detail"])
+
+    def test_career_context_extract_rejects_empty_extracted_file_text(self) -> None:
+        response = self.client.post(
+            "/personal/career-context/extract",
+            data={"extraction_mode": "local"},
+            files={"cv_file": ("cv.txt", "   \n\n   ", "text/plain")},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Extracted CV text is empty", response.json()["detail"])
+
+    def test_career_context_extract_handles_corrupt_docx(self) -> None:
+        response = self.client.post(
+            "/personal/career-context/extract",
+            data={"extraction_mode": "local"},
+            files={
+                "cv_file": (
+                    "cv.docx",
+                    b"not-a-valid-docx",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Could not read DOCX file", response.json()["detail"])
+
+    def test_career_context_extract_supports_docx_upload(self) -> None:
+        doc = Document()
+        doc.add_paragraph("Senior AI Engineer")
+        doc.add_paragraph("Built FastAPI and TypeScript systems for SaaS workflows.")
+        doc.add_paragraph("Reduced manual process time by 30%.")
+        buf = BytesIO()
+        doc.save(buf)
+        response = self.client.post(
+            "/personal/career-context/extract",
+            data={"extraction_mode": "local"},
+            files={
+                "cv_file": (
+                    "cv.docx",
+                    buf.getvalue(),
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("suggested_career_context", response.json())
+
+    @patch("app.services.career_context_extractor._extract_pdf_text", return_value="AI Engineer\nBuilt Python workflows")
+    def test_career_context_extract_supports_pdf_upload_path(self, _mock_pdf_extract) -> None:
+        response = self.client.post(
+            "/personal/career-context/extract",
+            data={"extraction_mode": "local"},
+            files={"cv_file": ("cv.pdf", b"%PDF-1.4 mock", "application/pdf")},
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn("suggested_career_context", response.json())
