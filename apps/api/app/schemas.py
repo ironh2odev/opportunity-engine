@@ -332,6 +332,122 @@ class PersonalRuleAction(BaseModel):
     draft_source: Optional[DraftRevisionSource] = None
 
 
+class CareerContext(BaseModel):
+    current_headline: str = ""
+    target_roles: list[str] = Field(default_factory=list)
+    core_skills: list[str] = Field(default_factory=list)
+    technical_stack: list[str] = Field(default_factory=list)
+    project_highlights: list[str] = Field(default_factory=list)
+    industries: list[str] = Field(default_factory=list)
+    location_preferences: list[str] = Field(default_factory=list)
+    visa_notes: str = ""
+    preferred_opportunity_types: list[PersonalOpportunityType] = Field(default_factory=list)
+    positioning_statement: str = ""
+    proof_points: list[str] = Field(default_factory=list)
+    raw_cv_text: str = ""
+    updated_at: datetime
+
+
+class CareerContextUpdateRequest(BaseModel):
+    current_headline: str = ""
+    target_roles: list[str] = Field(default_factory=list)
+    core_skills: list[str] = Field(default_factory=list)
+    technical_stack: list[str] = Field(default_factory=list)
+    project_highlights: list[str] = Field(default_factory=list)
+    industries: list[str] = Field(default_factory=list)
+    location_preferences: list[str] = Field(default_factory=list)
+    visa_notes: str = ""
+    preferred_opportunity_types: list[PersonalOpportunityType] = Field(default_factory=list)
+    positioning_statement: str = ""
+    proof_points: list[str] = Field(default_factory=list)
+    raw_cv_text: str = ""
+
+
+class CareerContextExtractionMode(str, Enum):
+    local = "local"
+    ai_assisted = "ai_assisted"
+
+
+class CareerContextExtractionRequest(BaseModel):
+    raw_cv_text: str = Field(min_length=1)
+    extraction_mode: CareerContextExtractionMode = CareerContextExtractionMode.local
+
+
+class CareerContextExtractionResponse(BaseModel):
+    suggested_career_context: CareerContextUpdateRequest
+    extraction_confidence: ConfidenceLabel
+    missing_fields: list[str] = Field(default_factory=list)
+    review_warnings: list[str] = Field(default_factory=list)
+    reasoning_summary: str
+    extraction_mode_used: CareerContextExtractionMode
+    ai_used: bool = False
+
+
+class CaptureSourceType(str, Enum):
+    job_listing = "job_listing"
+    linkedin_profile = "linkedin_profile"
+    linkedin_post = "linkedin_post"
+    company_website = "company_website"
+    recruiter_message = "recruiter_message"
+    client_website = "client_website"
+    personal_notes = "personal_notes"
+    other = "other"
+
+
+class CaptureRecommendedAction(str, Enum):
+    save = "save"
+    skip = "skip"
+    apply = "apply"
+    comment = "comment"
+    outreach = "outreach"
+    follow_up = "follow_up"
+    research_more = "research_more"
+
+
+class CapturedLeadSuggestion(BaseModel):
+    name: str = ""
+    role: str = ""
+    organisation: str = ""
+    organisation_website: str = ""
+    linkedin_url: str = ""
+    email: str = ""
+    location: str = ""
+    source: str = ""
+    opportunity_type: PersonalOpportunityType
+    relationship_strength: RelationshipStrength
+    problem_observed: str = ""
+    why_relevant: str = ""
+    suggested_angle: str = ""
+    notes: str = ""
+    tags: list[str] = Field(default_factory=list)
+    next_action: str = ""
+    follow_up_date: Optional[str] = None
+    fit_score: int = Field(default=5, ge=1, le=10)
+    priority: LeadPriority = LeadPriority.medium
+
+
+class ExtractFromTextRequest(BaseModel):
+    raw_text: str = Field(min_length=1)
+    source_type: str
+    optional_source_url: Optional[str] = None
+    user_goal: PersonalOpportunityType
+    use_career_context: bool = True
+
+
+class ExtractFromTextResponse(BaseModel):
+    suggested_lead: CapturedLeadSuggestion
+    extraction_confidence: ConfidenceLabel
+    career_fit_score: int = Field(ge=1, le=10)
+    career_fit_reasoning: str
+    matched_skills: list[str] = Field(default_factory=list)
+    missing_skills_or_gaps: list[str] = Field(default_factory=list)
+    suggested_positioning_angle: str
+    recommended_action: CaptureRecommendedAction
+    missing_fields: list[str] = Field(default_factory=list)
+    review_warnings: list[str] = Field(default_factory=list)
+    reasoning_summary: str
+
+
 class AIDraftActionRequest(BaseModel):
     action_id: str
     action_type: str

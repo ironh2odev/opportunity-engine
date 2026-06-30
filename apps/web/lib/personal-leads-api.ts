@@ -1,4 +1,10 @@
 import type {
+  CareerContext,
+  CareerContextExtractionMode,
+  CareerContextExtractionResult,
+  CareerContextInput,
+  CaptureSourceType,
+  ExtractFromTextResult,
   LeadPriority,
   PersonalLead,
   PersonalRuleAction,
@@ -31,8 +37,12 @@ function transformKeys<T>(value: unknown): T {
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const hasCustomHeaders = Boolean(options?.headers);
+  const headers = hasCustomHeaders
+    ? (options?.headers as HeadersInit)
+    : { "Content-Type": "application/json" };
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...options,
   });
   const data: unknown = await res.json();
@@ -67,6 +77,20 @@ export interface PersonalLeadInput {
   tags: string[];
   nextAction: string;
   followUpDate: string | null;
+}
+
+export interface ExtractFromTextInput {
+  rawText: string;
+  sourceType: CaptureSourceType;
+  optionalSourceUrl: string;
+  userGoal: PersonalOpportunityType;
+  useCareerContext: boolean;
+}
+
+export interface ExtractCareerContextInput {
+  rawCvText: string;
+  extractionMode: CareerContextExtractionMode;
+  file?: File | null;
 }
 
 function toSnakePayload(payload: Partial<PersonalLeadInput>): Record<string, unknown> {
@@ -149,5 +173,56 @@ export const personalLeadsApi = {
     return apiFetch<PersonalRuleAction[]>(
       `/personal/leads/${encodeURIComponent(leadId)}/rule-actions`,
     );
+  },
+
+  getCareerContext(): Promise<CareerContext> {
+    return apiFetch<CareerContext>("/personal/career-context");
+  },
+
+  updateCareerContext(payload: CareerContextInput): Promise<CareerContext> {
+    return apiFetch<CareerContext>("/personal/career-context", {
+      method: "PUT",
+      body: JSON.stringify({
+        current_headline: payload.currentHeadline,
+        target_roles: payload.targetRoles,
+        core_skills: payload.coreSkills,
+        technical_stack: payload.technicalStack,
+        project_highlights: payload.projectHighlights,
+        industries: payload.industries,
+        location_preferences: payload.locationPreferences,
+        visa_notes: payload.visaNotes,
+        preferred_opportunity_types: payload.preferredOpportunityTypes,
+        positioning_statement: payload.positioningStatement,
+        proof_points: payload.proofPoints,
+        raw_cv_text: payload.rawCvText,
+      }),
+    });
+  },
+
+  extractFromText(payload: ExtractFromTextInput): Promise<ExtractFromTextResult> {
+    return apiFetch<ExtractFromTextResult>("/personal/leads/extract-from-text", {
+      method: "POST",
+      body: JSON.stringify({
+        raw_text: payload.rawText,
+        source_type: payload.sourceType,
+        optional_source_url: payload.optionalSourceUrl || null,
+        user_goal: payload.userGoal,
+        use_career_context: payload.useCareerContext,
+      }),
+    });
+  },
+
+  async extractCareerContext(payload: ExtractCareerContextInput): Promise<CareerContextExtractionResult> {
+    const body = new FormData();
+    body.append("raw_cv_text", payload.rawCvText || "");
+    body.append("extraction_mode", payload.extractionMode);
+    if (payload.file) {
+      body.append("cv_file", payload.file);
+    }
+    return apiFetch<CareerContextExtractionResult>("/personal/career-context/extract", {
+      method: "POST",
+      body,
+      headers: {},
+    });
   },
 };

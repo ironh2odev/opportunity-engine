@@ -9,6 +9,8 @@ from uuid import uuid4
 from app.schemas import (
     ActionChannel,
     ActionDraftRevision,
+    CareerContext,
+    CareerContextUpdateRequest,
     DailyActionStatus,
     DraftRevisionSource,
     PersonalLead,
@@ -119,6 +121,26 @@ def _connect() -> sqlite3.Connection:
             created_at text not null,
             created_by text not null,
             foreign key (action_id) references personal_rule_actions(id) on delete cascade
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists personal_career_context (
+            id integer primary key check (id = 1),
+            current_headline text not null default '',
+            target_roles text not null default '[]',
+            core_skills text not null default '[]',
+            technical_stack text not null default '[]',
+            project_highlights text not null default '[]',
+            industries text not null default '[]',
+            location_preferences text not null default '[]',
+            visa_notes text not null default '',
+            preferred_opportunity_types text not null default '[]',
+            positioning_statement text not null default '',
+            proof_points text not null default '[]',
+            raw_cv_text text not null default '',
+            updated_at text not null
         )
         """
     )
@@ -384,6 +406,98 @@ def _to_rule_action_revision_model(row: sqlite3.Row) -> ActionDraftRevision:
         created_at=row["created_at"],
         created_by=row["created_by"],
     )
+
+
+def _to_career_context_model(row: sqlite3.Row) -> CareerContext:
+    return CareerContext(
+        current_headline=row["current_headline"],
+        target_roles=json.loads(row["target_roles"] or "[]"),
+        core_skills=json.loads(row["core_skills"] or "[]"),
+        technical_stack=json.loads(row["technical_stack"] or "[]"),
+        project_highlights=json.loads(row["project_highlights"] or "[]"),
+        industries=json.loads(row["industries"] or "[]"),
+        location_preferences=json.loads(row["location_preferences"] or "[]"),
+        visa_notes=row["visa_notes"],
+        preferred_opportunity_types=json.loads(row["preferred_opportunity_types"] or "[]"),
+        positioning_statement=row["positioning_statement"],
+        proof_points=json.loads(row["proof_points"] or "[]"),
+        raw_cv_text=row["raw_cv_text"],
+        updated_at=row["updated_at"],
+    )
+
+
+def get_career_context() -> CareerContext:
+    conn = _connect()
+    try:
+        row = conn.execute("select * from personal_career_context where id = 1").fetchone()
+        if row is None:
+            now = _now_iso()
+            conn.execute(
+                """
+                insert into personal_career_context (
+                    id, current_headline, target_roles, core_skills, technical_stack,
+                    project_highlights, industries, location_preferences, visa_notes,
+                    preferred_opportunity_types, positioning_statement, proof_points,
+                    raw_cv_text, updated_at
+                ) values (1, '', '[]', '[]', '[]', '[]', '[]', '[]', '', '[]', '', '[]', '', ?)
+                """,
+                [now],
+            )
+            conn.commit()
+            row = conn.execute("select * from personal_career_context where id = 1").fetchone()
+        return _to_career_context_model(row)
+    finally:
+        conn.close()
+
+
+def update_career_context(payload: CareerContextUpdateRequest) -> CareerContext:
+    now = _now_iso()
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            insert into personal_career_context (
+                id, current_headline, target_roles, core_skills, technical_stack,
+                project_highlights, industries, location_preferences, visa_notes,
+                preferred_opportunity_types, positioning_statement, proof_points,
+                raw_cv_text, updated_at
+            ) values (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            on conflict(id) do update set
+                current_headline = excluded.current_headline,
+                target_roles = excluded.target_roles,
+                core_skills = excluded.core_skills,
+                technical_stack = excluded.technical_stack,
+                project_highlights = excluded.project_highlights,
+                industries = excluded.industries,
+                location_preferences = excluded.location_preferences,
+                visa_notes = excluded.visa_notes,
+                preferred_opportunity_types = excluded.preferred_opportunity_types,
+                positioning_statement = excluded.positioning_statement,
+                proof_points = excluded.proof_points,
+                raw_cv_text = excluded.raw_cv_text,
+                updated_at = excluded.updated_at
+            """,
+            [
+                payload.current_headline.strip(),
+                json.dumps([item.strip() for item in payload.target_roles if item.strip()]),
+                json.dumps([item.strip() for item in payload.core_skills if item.strip()]),
+                json.dumps([item.strip() for item in payload.technical_stack if item.strip()]),
+                json.dumps([item.strip() for item in payload.project_highlights if item.strip()]),
+                json.dumps([item.strip() for item in payload.industries if item.strip()]),
+                json.dumps([item.strip() for item in payload.location_preferences if item.strip()]),
+                payload.visa_notes.strip(),
+                json.dumps(payload.preferred_opportunity_types),
+                payload.positioning_statement.strip(),
+                json.dumps([item.strip() for item in payload.proof_points if item.strip()]),
+                payload.raw_cv_text,
+                now,
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return get_career_context()
 
 
 def get_rule_action(action_id: str) -> Optional[PersonalRuleAction]:

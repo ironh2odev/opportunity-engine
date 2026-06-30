@@ -70,6 +70,27 @@ export type PersonalLeadStatus =
 
 export type LeadPriority = "low" | "medium" | "high";
 
+export type CaptureSourceType =
+  | "job_listing"
+  | "linkedin_profile"
+  | "linkedin_post"
+  | "company_website"
+  | "recruiter_message"
+  | "client_website"
+  | "personal_notes"
+  | "other";
+
+export type CareerContextExtractionMode = "local" | "ai_assisted";
+
+export type CaptureRecommendedAction =
+  | "save"
+  | "skip"
+  | "apply"
+  | "comment"
+  | "outreach"
+  | "follow_up"
+  | "research_more";
+
 export interface Opportunity {
   id: string;
   title: string;
@@ -175,6 +196,83 @@ export interface PersonalRuleAction {
   followUpDate: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CareerContext {
+  currentHeadline: string;
+  targetRoles: string[];
+  coreSkills: string[];
+  technicalStack: string[];
+  projectHighlights: string[];
+  industries: string[];
+  locationPreferences: string[];
+  visaNotes: string;
+  preferredOpportunityTypes: PersonalOpportunityType[];
+  positioningStatement: string;
+  proofPoints: string[];
+  rawCvText: string;
+  updatedAt: string;
+}
+
+export interface CareerContextInput {
+  currentHeadline: string;
+  targetRoles: string[];
+  coreSkills: string[];
+  technicalStack: string[];
+  projectHighlights: string[];
+  industries: string[];
+  locationPreferences: string[];
+  visaNotes: string;
+  preferredOpportunityTypes: PersonalOpportunityType[];
+  positioningStatement: string;
+  proofPoints: string[];
+  rawCvText: string;
+}
+
+export interface CareerContextExtractionResult {
+  suggestedCareerContext: CareerContextInput;
+  extractionConfidence: ConfidenceLabel;
+  missingFields: string[];
+  reviewWarnings: string[];
+  reasoningSummary: string;
+  extractionModeUsed: CareerContextExtractionMode;
+  aiUsed: boolean;
+}
+
+export interface CapturedLeadSuggestion {
+  name: string;
+  role: string;
+  organisation: string;
+  organisationWebsite: string;
+  linkedinUrl: string;
+  email: string;
+  location: string;
+  source: string;
+  opportunityType: PersonalOpportunityType;
+  relationshipStrength: RelationshipStrength;
+  problemObserved: string;
+  whyRelevant: string;
+  suggestedAngle: string;
+  notes: string;
+  tags: string[];
+  nextAction: string;
+  followUpDate: string | null;
+  fitScore: number;
+  priority: LeadPriority;
+}
+
+export interface ExtractFromTextResult {
+  suggestedLead: CapturedLeadSuggestion;
+  extractionConfidence: ConfidenceLabel;
+  careerFitScore: number;
+  careerFitReasoning: string;
+  matchedSkills: string[];
+  missingSkillsOrGaps: string[];
+  suggestedPositioningAngle: string;
+  recommendedAction: CaptureRecommendedAction;
+  missingFields: string[];
+  reviewWarnings: string[];
+  reasoningSummary: string;
 }
 
 export interface DailyRollup {

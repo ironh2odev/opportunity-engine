@@ -2,14 +2,22 @@ import csv
 import io
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app import personal_store
 from app.mock_data import OUTBOUND_CHANNELS
+from app.services.career_context_extractor import extract_career_context
+from app.services.capture_assistant import ALLOWED_SOURCE_TYPES, extract_from_text
 from app.schemas import (
     ActionChannel,
+    CareerContext,
+    CareerContextExtractionMode,
+    CareerContextExtractionResponse,
+    CareerContextUpdateRequest,
     DailyActionStatus,
     DeleteResponse,
+    ExtractFromTextRequest,
+    ExtractFromTextResponse,
     PersonalLead,
     PersonalLeadCreateRequest,
     PersonalLeadCsvImportRequest,
@@ -18,6 +26,9 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/personal/leads", tags=["personal-leads"])
+
+
+career_context_router = APIRouter(prefix="/personal", tags=["career-context"])
 
 
 def _to_channel_from_next_action(next_action: str) -> ActionChannel:
@@ -181,3 +192,53 @@ def get_rule_actions_for_lead(lead_id: str) -> list[PersonalRuleAction]:
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead not found")
     return personal_store.list_rule_actions_for_lead(lead_id)
+
+
+@career_context_router.get("/career-context", response_model=CareerContext)
+def get_career_context() -> CareerContext:
+    return personal_store.get_career_context()
+
+
+@career_context_router.put("/career-context", response_model=CareerContext)
+def put_career_context(payload: CareerContextUpdateRequest) -> CareerContext:
+    return personal_store.update_career_context(payload)
+
+
+def _decode_uploaded_cv_text(file_name: str, content: bytes) -> str:
+    lower_name = file_name.lower()
+    if lower_name.endswith(".txt"):
+        return content.decode("utf-8", errors="replace")
+    raise ValueError("Unsupported file type. Use pasted text or .txt for this version.")
+
+
+@career_context_router.post("/career-context/extract", response_model=CareerContextExtractionResponse)
+async def extract_career_context_route(
+    raw_cv_text: str = Form(default=""),
+    extraction_mode: CareerContextExtractionMode = Form(default=CareerContextExtractionMode.local),
+    cv_file: UploadFile | None = File(default=None),
+) -> CareerContextExtractionResponse:
+    text = raw_cv_text or ""
+    if cv_file is not None:
+        try:
+            content = await cv_file.read()
+            text = _decode_uploaded_cv_text(cv_file.filename or "", content)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="CV text is required")
+
+    return extract_career_context(text, extraction_mode)
+
+
+@router.post("/extract-from-text", response_model=ExtractFromTextResponse)
+def extract_lead_from_text(payload: ExtractFromTextRequest) -> ExtractFromTextResponse:
+    if payload.source_type not in ALLOWED_SOURCE_TYPES:
+        allowed = ", ".join(sorted(ALLOWED_SOURCE_TYPES))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported sourceType '{payload.source_type}'. Allowed: {allowed}",
+        )
+
+    career_context = personal_store.get_career_context()
+    return extract_from_text(payload, career_context)

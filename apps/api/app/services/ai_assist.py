@@ -4,6 +4,7 @@ import urllib.error
 import urllib.request
 from typing import Optional
 
+from app import personal_store
 from app.schemas import AIDraftActionRequest, AIDraftActionResponse
 
 
@@ -43,6 +44,24 @@ def _job_safety_risks(payload: AIDraftActionRequest) -> list[str]:
     ]
 
 
+def _career_context_hint() -> str:
+    context = personal_store.get_career_context()
+    parts: list[str] = []
+    if context.current_headline:
+        parts.append(f"headline={context.current_headline}")
+    if context.core_skills:
+        parts.append(f"core_skills={', '.join(context.core_skills[:6])}")
+    if context.technical_stack:
+        parts.append(f"tech_stack={', '.join(context.technical_stack[:6])}")
+    if context.target_roles:
+        parts.append(f"target_roles={', '.join(context.target_roles[:4])}")
+    if context.positioning_statement:
+        parts.append(f"positioning={context.positioning_statement}")
+    if not parts:
+        return ""
+    return "Career context reference (review-first, do not fabricate): " + " | ".join(parts)
+
+
 def _mock_confidence(payload: AIDraftActionRequest) -> str:
     if payload.channel in {"job_application", "outreach_dm", "connection_request"}:
         return "medium"
@@ -50,6 +69,7 @@ def _mock_confidence(payload: AIDraftActionRequest) -> str:
 
 
 def _mock_draft(payload: AIDraftActionRequest) -> AIDraftActionResponse:
+    context_hint = _career_context_hint()
     opening = f"Hi {payload.target_name},"
     if payload.channel == "linkedin_comment":
         opening = "Appreciate this perspective"
@@ -60,6 +80,8 @@ def _mock_draft(payload: AIDraftActionRequest) -> AIDraftActionResponse:
         f"Context: {payload.rationale} "
         f"Proof point to include: {payload.proof_to_reference}."
     )
+    if context_hint:
+        draft = f"{draft} {context_hint}"
 
     short_version: Optional[str] = None
     if _requires_connection_limit(payload):
@@ -70,6 +92,7 @@ def _mock_draft(payload: AIDraftActionRequest) -> AIDraftActionResponse:
     risks = [
         "Message may still be generic without one concrete reference to current context.",
         "Double-check that claims map to verifiable real work before use.",
+        "Reframe real experience only; do not invent achievements.",
     ]
     risks.extend(_job_safety_risks(payload))
 
@@ -86,13 +109,16 @@ def _mock_draft(payload: AIDraftActionRequest) -> AIDraftActionResponse:
 
 
 def _build_openai_prompt(payload: AIDraftActionRequest) -> str:
+    context_hint = _career_context_hint()
     return (
         "You are generating draft-only professional communication. "
         "Never imply automation, never send messages, and never fabricate experience. "
         "Return strict JSON with keys: draft_message, short_version, reasoning_summary, risks_or_gaps, confidence_label, review_notes. "
         "confidence_label must be low, medium, or high. "
         "review_notes must include these themes: Needs refinement, Could be more specific, Consider grounding this with an example. "
+        "When career context exists, align tone and relevance with it while keeping claims fully factual. "
         f"Action context: {payload.model_dump_json()}"
+        + (f" Career context: {context_hint}" if context_hint else "")
     )
 
 

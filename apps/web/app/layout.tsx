@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Manrope, Sora } from "next/font/google";
+import { GlobalNav } from "../components/navigation/global-nav";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body
         className={`${manrope.variable} ${sora.variable} bg-mesh-gradient [font-family:var(--font-manrope)] antialiased`}
       >
+        <GlobalNav />
         {children}
       </body>
     </html>

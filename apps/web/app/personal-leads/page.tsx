@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  CareerContextInput,
+  CareerContextExtractionMode,
+  CareerContextExtractionResult,
+  CaptureSourceType,
+  ExtractFromTextResult,
   LeadPriority,
   PersonalLead,
   PersonalRuleAction,
@@ -44,6 +49,17 @@ const statuses: PersonalLeadStatus[] = [
 
 const priorities: LeadPriority[] = ["low", "medium", "high"];
 
+const captureSourceTypes: CaptureSourceType[] = [
+  "job_listing",
+  "linkedin_profile",
+  "linkedin_post",
+  "company_website",
+  "recruiter_message",
+  "client_website",
+  "personal_notes",
+  "other",
+];
+
 const emptyLeadInput: PersonalLeadInput = {
   name: "",
   role: "",
@@ -67,6 +83,21 @@ const emptyLeadInput: PersonalLeadInput = {
   followUpDate: null,
 };
 
+const emptyCareerContext: CareerContextInput = {
+  currentHeadline: "",
+  targetRoles: [],
+  coreSkills: [],
+  technicalStack: [],
+  projectHighlights: [],
+  industries: [],
+  locationPreferences: [],
+  visaNotes: "",
+  preferredOpportunityTypes: [],
+  positioningStatement: "",
+  proofPoints: [],
+  rawCvText: "",
+};
+
 export default function PersonalLeadsPage() {
   const [leads, setLeads] = useState<PersonalLead[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -83,6 +114,21 @@ export default function PersonalLeadsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [createdAction, setCreatedAction] = useState<PersonalRuleAction | null>(null);
   const [linkedActions, setLinkedActions] = useState<PersonalRuleAction[]>([]);
+  const [careerContext, setCareerContext] = useState<CareerContextInput>(emptyCareerContext);
+  const [careerExtractionMode, setCareerExtractionMode] = useState<CareerContextExtractionMode>("local");
+  const [careerImportText, setCareerImportText] = useState("");
+  const [careerImportFile, setCareerImportFile] = useState<File | null>(null);
+  const [careerExtractionResult, setCareerExtractionResult] = useState<CareerContextExtractionResult | null>(null);
+  const [careerExtractBusy, setCareerExtractBusy] = useState(false);
+  const [captureSourceType, setCaptureSourceType] = useState<CaptureSourceType>("job_listing");
+  const [captureSourceUrl, setCaptureSourceUrl] = useState("");
+  const [captureGoal, setCaptureGoal] = useState<PersonalOpportunityType>("job");
+  const [captureUseCareerContext, setCaptureUseCareerContext] = useState(true);
+  const [captureRawText, setCaptureRawText] = useState("");
+  const [captureResult, setCaptureResult] = useState<ExtractFromTextResult | null>(null);
+  const [captureBusy, setCaptureBusy] = useState(false);
+  const [careerBusy, setCareerBusy] = useState(false);
+  const [saveExtractAndCreateAction, setSaveExtractAndCreateAction] = useState(false);
 
   const selectedLead = useMemo(
     () => leads.find((item) => item.id === selectedLeadId) ?? null,
@@ -106,6 +152,31 @@ export default function PersonalLeadsPage() {
   useEffect(() => {
     void loadLeads();
   }, [loadLeads]);
+
+  useEffect(() => {
+    async function loadCareerContext() {
+      try {
+        const data = await personalLeadsApi.getCareerContext();
+        setCareerContext({
+          currentHeadline: data.currentHeadline,
+          targetRoles: data.targetRoles,
+          coreSkills: data.coreSkills,
+          technicalStack: data.technicalStack,
+          projectHighlights: data.projectHighlights,
+          industries: data.industries,
+          locationPreferences: data.locationPreferences,
+          visaNotes: data.visaNotes,
+          preferredOpportunityTypes: data.preferredOpportunityTypes,
+          positioningStatement: data.positioningStatement,
+          proofPoints: data.proofPoints,
+          rawCvText: data.rawCvText,
+        });
+      } catch {
+        setCareerContext(emptyCareerContext);
+      }
+    }
+    void loadCareerContext();
+  }, []);
 
   useEffect(() => {
     async function loadLinkedActions() {
@@ -231,6 +302,150 @@ export default function PersonalLeadsPage() {
     }
   }
 
+  function applySuggestionToForm(result: ExtractFromTextResult) {
+    const suggested = result.suggestedLead;
+    setFormData((prev) => ({
+      ...prev,
+      name: suggested.name,
+      role: suggested.role,
+      organisation: suggested.organisation,
+      organisationWebsite: suggested.organisationWebsite,
+      linkedinUrl: suggested.linkedinUrl,
+      email: suggested.email,
+      location: suggested.location,
+      source: suggested.source || `capture:${captureSourceType}`,
+      opportunityType: suggested.opportunityType,
+      relationshipStrength: suggested.relationshipStrength,
+      fitScore: suggested.fitScore,
+      priority: suggested.priority,
+      problemObserved: suggested.problemObserved,
+      whyRelevant: suggested.whyRelevant,
+      suggestedAngle: suggested.suggestedAngle,
+      notes: suggested.notes,
+      tags: suggested.tags,
+      nextAction: suggested.nextAction,
+      followUpDate: suggested.followUpDate,
+    }));
+  }
+
+  async function handleSaveCareerContext() {
+    setCareerBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const updated = await personalLeadsApi.updateCareerContext(careerContext);
+      setCareerContext({
+        currentHeadline: updated.currentHeadline,
+        targetRoles: updated.targetRoles,
+        coreSkills: updated.coreSkills,
+        technicalStack: updated.technicalStack,
+        projectHighlights: updated.projectHighlights,
+        industries: updated.industries,
+        locationPreferences: updated.locationPreferences,
+        visaNotes: updated.visaNotes,
+        preferredOpportunityTypes: updated.preferredOpportunityTypes,
+        positioningStatement: updated.positioningStatement,
+        proofPoints: updated.proofPoints,
+        rawCvText: updated.rawCvText,
+      });
+      setMessage("Career context saved locally.");
+    } catch (err) {
+      setError((err as PersonalApiError).message);
+    } finally {
+      setCareerBusy(false);
+    }
+  }
+
+  function applyExtractedCareerContext(result: CareerContextExtractionResult) {
+    const suggested = result.suggestedCareerContext;
+    setCareerContext({
+      currentHeadline: suggested.currentHeadline,
+      targetRoles: suggested.targetRoles,
+      coreSkills: suggested.coreSkills,
+      technicalStack: suggested.technicalStack,
+      projectHighlights: suggested.projectHighlights,
+      industries: suggested.industries,
+      locationPreferences: suggested.locationPreferences,
+      visaNotes: suggested.visaNotes,
+      preferredOpportunityTypes: suggested.preferredOpportunityTypes,
+      positioningStatement: suggested.positioningStatement,
+      proofPoints: suggested.proofPoints,
+      rawCvText: suggested.rawCvText,
+    });
+  }
+
+  async function handleExtractCareerContext() {
+    setCareerExtractBusy(true);
+    setError(null);
+    setMessage(null);
+    setCareerExtractionResult(null);
+    try {
+      const result = await personalLeadsApi.extractCareerContext({
+        rawCvText: careerImportText,
+        extractionMode: careerExtractionMode,
+        file: careerImportFile,
+      });
+      setCareerExtractionResult(result);
+      applyExtractedCareerContext(result);
+      setMessage("Career context extracted as draft. Review fields, then save manually.");
+    } catch (err) {
+      setError((err as PersonalApiError).message);
+    } finally {
+      setCareerExtractBusy(false);
+    }
+  }
+
+  async function handleExtract() {
+    setCaptureBusy(true);
+    setError(null);
+    setMessage(null);
+    setCaptureResult(null);
+    try {
+      const result = await personalLeadsApi.extractFromText({
+        rawText: captureRawText,
+        sourceType: captureSourceType,
+        optionalSourceUrl: captureSourceUrl,
+        userGoal: captureGoal,
+        useCareerContext: captureUseCareerContext,
+      });
+      setCaptureResult(result);
+      applySuggestionToForm(result);
+      setMessage("Draft extraction generated. Review and save manually.");
+    } catch (err) {
+      setError((err as PersonalApiError).message);
+    } finally {
+      setCaptureBusy(false);
+    }
+  }
+
+  async function handleSaveExtractedLead() {
+    if (!captureResult) return;
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const created = await personalLeadsApi.create({
+        ...emptyLeadInput,
+        ...captureResult.suggestedLead,
+      });
+      if (saveExtractAndCreateAction) {
+        await personalLeadsApi.createRuleAction(created.id);
+      }
+      setMessage(
+        saveExtractAndCreateAction
+          ? "Extracted lead saved and Rule of 100 draft action created."
+          : "Extracted lead saved in private local mode.",
+      );
+      await loadLeads();
+      setSelectedLeadId(created.id);
+      setCaptureResult(null);
+    } catch (err) {
+      setError((err as PersonalApiError).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="soft-grid min-h-screen bg-mesh-gradient px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
       <main className="mx-auto max-w-[1500px] space-y-6">
@@ -251,6 +466,248 @@ export default function PersonalLeadsPage() {
 
         {error ? <Card className="border-rose-400/30 bg-rose-500/10 text-sm text-rose-100">{error}</Card> : null}
         {message ? <Card className="border-cyan-400/30 bg-cyan-500/10 text-sm text-cyan-100">{message}</Card> : null}
+
+        <section className="grid gap-4 xl:grid-cols-2">
+          <Card className="space-y-3">
+            <details open>
+              <summary className="cursor-pointer [font-family:var(--font-sora)] text-lg font-semibold">Career Context</summary>
+              <p className="mt-2 text-xs text-slate-300">
+                Private local context. Used only to improve extraction, fit scoring, and draft suggestions.
+              </p>
+              <p className="mt-1 text-xs text-slate-300">
+                Private local context. Review before saving. Do not include sensitive data you do not want stored locally.
+              </p>
+              <div className="mt-3 space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Import from CV</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <select
+                    value={careerExtractionMode}
+                    onChange={(e) => setCareerExtractionMode(e.target.value as CareerContextExtractionMode)}
+                    className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                  >
+                    <option value="local">local</option>
+                    <option value="ai_assisted">ai_assisted</option>
+                  </select>
+                  <input
+                    type="file"
+                    accept=".txt,.pdf,.docx"
+                    onChange={(e) => setCareerImportFile(e.target.files?.[0] ?? null)}
+                    className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-xs"
+                  />
+                </div>
+                <textarea
+                  placeholder="Paste CV text"
+                  value={careerImportText}
+                  onChange={(e) => setCareerImportText(e.target.value)}
+                  className="h-28 rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-xs"
+                />
+                <p className="text-xs text-slate-400">
+                  This version supports pasted text and .txt upload. PDF/DOCX parsing is planned next.
+                </p>
+                <p className="text-xs text-slate-400">
+                  AI-assisted mode is optional and review-first. If unavailable, extraction falls back to local mode.
+                </p>
+                <button
+                  disabled={careerExtractBusy || (!careerImportText.trim() && !careerImportFile)}
+                  onClick={() => void handleExtractCareerContext()}
+                  className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50"
+                >
+                  Extract Career Context
+                </button>
+              </div>
+
+              {careerExtractionResult ? (
+                <div className="mt-3 space-y-2 rounded-lg border border-white/10 bg-white/5 p-3 text-xs text-slate-200">
+                  <p>Confidence: {careerExtractionResult.extractionConfidence}</p>
+                  <p>Mode used: {careerExtractionResult.extractionModeUsed}</p>
+                  <p>AI used: {careerExtractionResult.aiUsed ? "yes" : "no"}</p>
+                  <p>Missing fields: {careerExtractionResult.missingFields.join(", ") || "none"}</p>
+                  <p>Warnings: {careerExtractionResult.reviewWarnings.join(" | ") || "none"}</p>
+                  <p>Reasoning: {careerExtractionResult.reasoningSummary}</p>
+                </div>
+              ) : null}
+
+              <div className="mt-3 grid gap-2">
+                <input
+                  placeholder="Current headline"
+                  value={careerContext.currentHeadline}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, currentHeadline: e.target.value }))}
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="Target roles (comma separated)"
+                  value={careerContext.targetRoles.join(", ")}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, targetRoles: e.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))}
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="Core skills (comma separated)"
+                  value={careerContext.coreSkills.join(", ")}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, coreSkills: e.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))}
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="Technical stack (comma separated)"
+                  value={careerContext.technicalStack.join(", ")}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, technicalStack: e.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))}
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="Preferred opportunity types (comma separated)"
+                  value={careerContext.preferredOpportunityTypes.join(", ")}
+                  onChange={(e) =>
+                    setCareerContext((p) => ({
+                      ...p,
+                      preferredOpportunityTypes: e.target.value
+                        .split(",")
+                        .map((item) => item.trim())
+                        .filter(Boolean) as PersonalOpportunityType[],
+                    }))
+                  }
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <textarea
+                  placeholder="Visa notes"
+                  value={careerContext.visaNotes}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, visaNotes: e.target.value }))}
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="Industries (comma separated)"
+                  value={careerContext.industries.join(", ")}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, industries: e.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))}
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="Location preferences (comma separated)"
+                  value={careerContext.locationPreferences.join(", ")}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, locationPreferences: e.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))}
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <input
+                  placeholder="Proof points (comma separated)"
+                  value={careerContext.proofPoints.join(", ")}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, proofPoints: e.target.value.split(",").map((item) => item.trim()).filter(Boolean) }))}
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <textarea
+                  placeholder="Positioning statement"
+                  value={careerContext.positioningStatement}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, positioningStatement: e.target.value }))}
+                  className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                />
+                <textarea
+                  placeholder="Raw CV text"
+                  value={careerContext.rawCvText}
+                  onChange={(e) => setCareerContext((p) => ({ ...p, rawCvText: e.target.value }))}
+                  className="h-28 rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-xs"
+                />
+              </div>
+              <button
+                disabled={careerBusy}
+                onClick={() => void handleSaveCareerContext()}
+                className="mt-3 rounded-lg border border-white/15 px-3 py-2 text-sm disabled:opacity-50"
+              >
+                Save career context
+              </button>
+            </details>
+          </Card>
+
+          <Card className="space-y-3">
+            <h2 className="[font-family:var(--font-sora)] text-lg font-semibold">Capture Opportunity Assistant</h2>
+            <p className="text-xs text-slate-300">
+              AI suggests. You review before saving. Private local mode. No scraping. No auto-send. No auto-apply.
+              Manual execution only.
+            </p>
+            <p className="text-xs text-slate-300">
+              CV/career context is used only to support fit scoring and drafting.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <select
+                value={captureSourceType}
+                onChange={(e) => setCaptureSourceType(e.target.value as CaptureSourceType)}
+                className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+              >
+                {captureSourceTypes.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+              <select
+                value={captureGoal}
+                onChange={(e) => setCaptureGoal(e.target.value as PersonalOpportunityType)}
+                className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+              >
+                {opportunityTypes.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+            <input
+              placeholder="Optional source URL"
+              value={captureSourceUrl}
+              onChange={(e) => setCaptureSourceUrl(e.target.value)}
+              className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+            />
+            <textarea
+              placeholder="Paste job listing, recruiter message, profile text, or notes"
+              value={captureRawText}
+              onChange={(e) => setCaptureRawText(e.target.value)}
+              className="h-36 rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+            />
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={captureUseCareerContext}
+                onChange={(e) => setCaptureUseCareerContext(e.target.checked)}
+              />
+              Use career context for fit scoring
+            </label>
+            <button
+              disabled={captureBusy || !captureRawText.trim()}
+              onClick={() => void handleExtract()}
+              className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50"
+            >
+              Extract draft lead
+            </button>
+
+            {captureResult ? (
+              <div className="space-y-2 rounded-lg border border-white/10 bg-white/5 p-3 text-xs text-slate-200">
+                <p>Confidence: {captureResult.extractionConfidence}</p>
+                <p>Fit score: {captureResult.careerFitScore}/10</p>
+                <p>Recommended action: {captureResult.recommendedAction}</p>
+                <p>Matched skills: {captureResult.matchedSkills.join(", ") || "-"}</p>
+                <p>Gaps: {captureResult.missingSkillsOrGaps.join(", ") || "-"}</p>
+                <p>Missing fields: {captureResult.missingFields.join(", ") || "none"}</p>
+                {captureResult.reviewWarnings.length > 0 ? (
+                  <p>Warnings: {captureResult.reviewWarnings.join(" | ")}</p>
+                ) : null}
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    onClick={() => applySuggestionToForm(captureResult)}
+                    className="rounded-lg border border-white/15 px-3 py-2 text-xs"
+                  >
+                    Prefill lead form
+                  </button>
+                  <label className="flex items-center gap-2 rounded-lg border border-white/10 px-2 py-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={saveExtractAndCreateAction}
+                      onChange={(e) => setSaveExtractAndCreateAction(e.target.checked)}
+                    />
+                    Create Rule action now
+                  </label>
+                  <button
+                    disabled={saving}
+                    onClick={() => void handleSaveExtractedLead()}
+                    className="rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-900 disabled:opacity-50"
+                  >
+                    Save extracted lead
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </Card>
+        </section>
 
         <section className="grid gap-4 xl:grid-cols-[1.1fr_1fr_1fr]">
           <Card className="space-y-3">

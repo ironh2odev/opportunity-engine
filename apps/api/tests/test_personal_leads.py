@@ -12,12 +12,19 @@ class PersonalLeadsApiTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.temp_dir.name, "personal_test.db")
         os.environ["OE_PERSONAL_DB_PATH"] = self.db_path
+        self.old_openai_key = os.environ.get("OPENAI_API_KEY")
+        if "OPENAI_API_KEY" in os.environ:
+            del os.environ["OPENAI_API_KEY"]
         self.client = TestClient(app)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
         if "OE_PERSONAL_DB_PATH" in os.environ:
             del os.environ["OE_PERSONAL_DB_PATH"]
+        if self.old_openai_key is not None:
+            os.environ["OPENAI_API_KEY"] = self.old_openai_key
+        elif "OPENAI_API_KEY" in os.environ:
+            del os.environ["OPENAI_API_KEY"]
 
     def _create_lead(self) -> str:
         response = self.client.post(
@@ -116,6 +123,191 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         list_response = self.client.get("/personal/leads/lead_unknown/rule-actions")
         self.assertEqual(list_response.status_code, 404)
         self.assertIn("Lead not found", list_response.json()["detail"])
+
+    def test_career_context_round_trip(self) -> None:
+        get_response = self.client.get("/personal/career-context")
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.json()["current_headline"], "")
+
+        put_response = self.client.put(
+            "/personal/career-context",
+            json={
+                "current_headline": "AI Product Engineer",
+                "target_roles": ["Founding Engineer", "AI Engineer"],
+                "core_skills": ["python", "fastapi"],
+                "technical_stack": ["next.js", "typescript"],
+                "project_highlights": ["Built local-first opportunity pipeline"],
+                "industries": ["SaaS"],
+                "location_preferences": ["Remote"],
+                "visa_notes": "No sponsorship required",
+                "preferred_opportunity_types": ["job", "client"],
+                "positioning_statement": "Bridge AI prototypes to reliable product workflows.",
+                "proof_points": ["Reduced manual review time by 40%"],
+                "raw_cv_text": "10+ years building product systems",
+            },
+        )
+        self.assertEqual(put_response.status_code, 200)
+        self.assertEqual(put_response.json()["current_headline"], "AI Product Engineer")
+
+        fetch_response = self.client.get("/personal/career-context")
+        self.assertEqual(fetch_response.status_code, 200)
+        self.assertEqual(fetch_response.json()["core_skills"], ["python", "fastapi"])
+
+    def test_career_context_extract_from_pasted_text(self) -> None:
+        response = self.client.post(
+            "/personal/career-context/extract",
+            data={
+                "raw_cv_text": "AI Product Engineer\nBuilt Python and FastAPI services for SaaS workflow automation.\nReduced processing time by 35%.",
+                "extraction_mode": "local",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("suggested_career_context", body)
+        self.assertIn("core_skills", body["suggested_career_context"])
+        self.assertIn("reasoning_summary", body)
+
+    def test_career_context_extract_rejects_empty_text(self) -> None:
+        response = self.client.post(
+            "/personal/career-context/extract",
+            data={
+                "raw_cv_text": "",
+                "extraction_mode": "local",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("CV text is required", response.json()["detail"])
+
+    def test_career_context_extract_is_draft_only_until_saved(self) -> None:
+        before = self.client.get("/personal/career-context")
+        self.assertEqual(before.status_code, 200)
+        before_headline = before.json()["current_headline"]
+
+        extract_response = self.client.post(
+            "/personal/career-context/extract",
+            data={
+                "raw_cv_text": "Senior Platform Engineer\nBuilt FastAPI and TypeScript systems.",
+                "extraction_mode": "local",
+            },
+        )
+        self.assertEqual(extract_response.status_code, 200)
+
+        after = self.client.get("/personal/career-context")
+        self.assertEqual(after.status_code, 200)
+        self.assertEqual(after.json()["current_headline"], before_headline)
+
+    def test_career_context_extract_supports_txt_upload(self) -> None:
+        response = self.client.post(
+            "/personal/career-context/extract",
+            data={"extraction_mode": "local"},
+            files={
+                "cv_file": (
+                    "cv.txt",
+                    "Data Engineer\nBuilt analytics pipeline in Python and SQL.",
+                    "text/plain",
+                )
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("suggested_career_context", response.json())
+
+    def test_extract_from_text_requires_raw_text(self) -> None:
+        response = self.client.post(
+            "/personal/leads/extract-from-text",
+            json={
+                "raw_text": "",
+                "source_type": "job_listing",
+                "user_goal": "job",
+                "use_career_context": True,
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_extract_from_text_rejects_unsupported_source_type(self) -> None:
+        response = self.client.post(
+            "/personal/leads/extract-from-text",
+            json={
+                "raw_text": "Hiring for a backend engineer role.",
+                "source_type": "sms_message",
+                "user_goal": "job",
+                "use_career_context": True,
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Unsupported sourceType", response.json()["detail"])
+
+    def test_extract_from_text_returns_warning_with_empty_context(self) -> None:
+        response = self.client.post(
+            "/personal/leads/extract-from-text",
+            json={
+                "raw_text": "We are hiring a python and fastapi engineer to build automation workflows.",
+                "source_type": "job_listing",
+                "user_goal": "job",
+                "use_career_context": True,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        warnings = response.json()["review_warnings"]
+        self.assertTrue(any("Career context is empty" in item for item in warnings))
+
+    def test_extract_from_text_is_draft_only_and_can_be_saved_via_normal_flow(self) -> None:
+        extract_response = self.client.post(
+            "/personal/leads/extract-from-text",
+            json={
+                "raw_text": "Recruiter message: looking for a senior fastapi engineer. Contact: Alex Rivera. Company: Orbital Labs.",
+                "source_type": "recruiter_message",
+                "user_goal": "job",
+                "use_career_context": False,
+            },
+        )
+        self.assertEqual(extract_response.status_code, 200)
+        payload = extract_response.json()
+        self.assertIn("career_fit_score", payload)
+        self.assertIn("reasoning_summary", payload)
+
+        leads_response = self.client.get("/personal/leads")
+        self.assertEqual(leads_response.status_code, 200)
+        self.assertEqual(len(leads_response.json()), 0)
+
+        rule_actions_before = self.client.get("/rule-of-100/actions")
+        self.assertEqual(rule_actions_before.status_code, 200)
+        before_count = len(rule_actions_before.json())
+
+        suggested = payload["suggested_lead"]
+        create_response = self.client.post(
+            "/personal/leads",
+            json={
+                "name": suggested["name"],
+                "role": suggested["role"],
+                "organisation": suggested["organisation"],
+                "organisation_website": suggested["organisation_website"],
+                "linkedin_url": suggested["linkedin_url"],
+                "email": suggested["email"],
+                "location": suggested["location"],
+                "source": suggested["source"],
+                "opportunity_type": suggested["opportunity_type"],
+                "relationship_strength": suggested["relationship_strength"],
+                "status": "new",
+                "fit_score": suggested["fit_score"],
+                "priority": suggested["priority"],
+                "problem_observed": suggested["problem_observed"],
+                "why_relevant": suggested["why_relevant"],
+                "suggested_angle": suggested["suggested_angle"],
+                "notes": suggested["notes"],
+                "tags": suggested["tags"],
+                "next_action": suggested["next_action"],
+                "follow_up_date": suggested["follow_up_date"],
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+
+        leads_after = self.client.get("/personal/leads")
+        self.assertEqual(leads_after.status_code, 200)
+        self.assertEqual(len(leads_after.json()), 1)
+
+        rule_actions_after = self.client.get("/rule-of-100/actions")
+        self.assertEqual(rule_actions_after.status_code, 200)
+        self.assertEqual(len(rule_actions_after.json()), before_count)
 
 
 if __name__ == "__main__":
