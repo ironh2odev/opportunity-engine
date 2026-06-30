@@ -88,6 +88,34 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         action = action_response.json()
         self.assertEqual(action["status"], "suggested")
         self.assertIn("approval_required", action)
+        self.assertEqual(action["source_lead_id"], lead_id)
+
+    def test_linked_actions_fetch_for_lead(self) -> None:
+        lead_id = self._create_lead()
+        self.client.post(f"/personal/leads/{lead_id}/create-rule-action")
+
+        list_response = self.client.get(f"/personal/leads/{lead_id}/rule-actions")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(len(list_response.json()), 1)
+        self.assertEqual(list_response.json()[0]["source_lead_id"], lead_id)
+
+    def test_linked_actions_survive_reinitialization(self) -> None:
+        lead_id = self._create_lead()
+        self.client.post(f"/personal/leads/{lead_id}/create-rule-action")
+
+        new_client = TestClient(app)
+        list_response = new_client.get(f"/personal/leads/{lead_id}/rule-actions")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertGreaterEqual(len(list_response.json()), 1)
+
+    def test_invalid_lead_id_returns_clear_error(self) -> None:
+        create_response = self.client.post("/personal/leads/lead_unknown/create-rule-action")
+        self.assertEqual(create_response.status_code, 404)
+        self.assertIn("Lead not found", create_response.json()["detail"])
+
+        list_response = self.client.get("/personal/leads/lead_unknown/rule-actions")
+        self.assertEqual(list_response.status_code, 404)
+        self.assertIn("Lead not found", list_response.json()["detail"])
 
 
 if __name__ == "__main__":

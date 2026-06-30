@@ -64,3 +64,10 @@ Never include:
 - Channel conversion rates
 - Follow-up effectiveness
 - Quality metrics and streak reporting
+
+## Personal Mode linkage
+
+- Lead-generated draft actions are persisted in local SQLite storage under `private/local-data/`.
+- Each action retains source lead linkage for traceability across restarts.
+- Human approval remains mandatory for outbound-capable completion.
+- Manual execution only: no auto-send, no auto-apply, no scraping.

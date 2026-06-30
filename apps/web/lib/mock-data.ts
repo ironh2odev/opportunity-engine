@@ -305,6 +305,11 @@ export const dailyActions: DailyAction[] = sequence.map((channel, index) => {
     createdAt,
     outboundCapable: template.outboundCapable,
     approvalRequired: template.outboundCapable,
+    sourceType: "mock_demo",
+    sourceLeadId: null,
+    sourceLeadName: null,
+    sourceLeadOrganisation: null,
+    privateMode: false,
   };
 });
 

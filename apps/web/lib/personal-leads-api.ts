@@ -1,7 +1,7 @@
 import type {
-  DailyAction,
   LeadPriority,
   PersonalLead,
+  PersonalRuleAction,
   PersonalLeadStatus,
   PersonalOpportunityType,
   RelationshipStrength,
@@ -139,9 +139,15 @@ export const personalLeadsApi = {
     });
   },
 
-  createRuleAction(id: string): Promise<DailyAction> {
-    return apiFetch<DailyAction>(`/personal/leads/${encodeURIComponent(id)}/create-rule-action`, {
+  createRuleAction(id: string): Promise<PersonalRuleAction> {
+    return apiFetch<PersonalRuleAction>(`/personal/leads/${encodeURIComponent(id)}/create-rule-action`, {
       method: "POST",
     });
+  },
+
+  listRuleActions(leadId: string): Promise<PersonalRuleAction[]> {
+    return apiFetch<PersonalRuleAction[]>(
+      `/personal/leads/${encodeURIComponent(leadId)}/rule-actions`,
+    );
   },
 };

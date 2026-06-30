@@ -45,6 +45,14 @@ export function ActionDetailPanel({
           {action.targetName} · {action.targetRole} · {action.targetOrganisation}
         </p>
         <p>Source: {action.source}</p>
+        {action.sourceType === "personal_lead" ? (
+          <div className="space-y-1 rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3 text-xs text-cyan-100">
+            <p className="font-semibold uppercase tracking-wide">Private lead action</p>
+            <p>From Personal Mode</p>
+            <p>Source lead: {action.sourceLeadName || action.sourceLeadOrganisation || "Personal lead"}</p>
+            <p>Private mode: {action.privateMode ? "true" : "false"}</p>
+          </div>
+        ) : null}
       </div>
 
       <section className="space-y-2 text-sm text-slate-200">

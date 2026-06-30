@@ -115,6 +115,11 @@ export interface DailyAction {
   createdAt: string;
   outboundCapable: boolean;
   approvalRequired: boolean;
+  sourceType: "mock_demo" | "personal_lead";
+  sourceLeadId: string | null;
+  sourceLeadName: string | null;
+  sourceLeadOrganisation: string | null;
+  privateMode: boolean;
 }
 
 export interface ApprovalRecord {
@@ -146,6 +151,22 @@ export interface PersonalLead {
   notes: string;
   tags: string[];
   nextAction: string;
+  followUpDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalRuleAction {
+  id: string;
+  sourceLeadId: string;
+  channel: ActionChannel;
+  actionType: string;
+  suggestedAction: string;
+  suggestedMessage: string;
+  rationale: string;
+  proofToReference: string;
+  status: DailyActionStatus;
+  approvalRequired: boolean;
   followUpDate: string | null;
   createdAt: string;
   updatedAt: string;

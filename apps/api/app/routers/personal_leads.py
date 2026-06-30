@@ -1,20 +1,19 @@
 import csv
 import io
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
 from app import personal_store
-from app.mock_data import OUTBOUND_CHANNELS, RULE_OF_100_ACTIONS
+from app.mock_data import OUTBOUND_CHANNELS
 from app.schemas import (
     ActionChannel,
-    DailyAction,
     DailyActionStatus,
     DeleteResponse,
     PersonalLead,
     PersonalLeadCreateRequest,
     PersonalLeadCsvImportRequest,
+    PersonalRuleAction,
     PersonalLeadUpdateRequest,
 )
 
@@ -38,24 +37,13 @@ def _to_channel_from_next_action(next_action: str) -> ActionChannel:
     return ActionChannel.outreach_dm
 
 
-def _to_rule_action(lead: PersonalLead) -> DailyAction:
+def _to_rule_action(lead: PersonalLead) -> PersonalRuleAction:
     channel = _to_channel_from_next_action(lead.next_action)
     outbound_capable = channel in OUTBOUND_CHANNELS
-    now = datetime.utcnow().replace(microsecond=0).isoformat()
-
-    return DailyAction(
-        id=f"personal_action_{lead.id}",
-        date=now.split("T")[0],
+    return personal_store.create_rule_action(
+        source_lead_id=lead.id,
         channel=channel,
         action_type="Lead-driven draft action",
-        title=f"Prepare draft action for {lead.name or lead.organisation}",
-        target_name=lead.name,
-        target_role=lead.role,
-        target_organisation=lead.organisation,
-        opportunity_type="client-lead",
-        source=f"Personal lead ({lead.source})",
-        fit_score=lead.fit_score,
-        confidence_label="medium",
         suggested_action=lead.next_action or "Review profile and prepare manual outreach draft.",
         suggested_message=(
             f"Hi {lead.name}, I reviewed your current priorities and drafted a short message tailored to {lead.organisation}."
@@ -65,10 +53,8 @@ def _to_rule_action(lead: PersonalLead) -> DailyAction:
         rationale=lead.why_relevant or "Lead is relevant to current opportunity priorities.",
         proof_to_reference=lead.problem_observed or "Reference one relevant outcome before sending.",
         status=DailyActionStatus.suggested,
-        follow_up_date=lead.follow_up_date,
-        created_at=now,
-        outbound_capable=outbound_capable,
         approval_required=outbound_capable,
+        follow_up_date=lead.follow_up_date,
     )
 
 
@@ -179,12 +165,19 @@ def import_personal_leads_csv(payload: PersonalLeadCsvImportRequest) -> list[Per
     return created
 
 
-@router.post("/{lead_id}/create-rule-action", response_model=DailyAction)
-def create_rule_action_from_lead(lead_id: str) -> DailyAction:
+@router.post("/{lead_id}/create-rule-action", response_model=PersonalRuleAction)
+def create_rule_action_from_lead(lead_id: str) -> PersonalRuleAction:
     lead = personal_store.get_lead(lead_id)
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead not found")
 
     action = _to_rule_action(lead)
-    RULE_OF_100_ACTIONS.append(action)
     return action
+
+
+@router.get("/{lead_id}/rule-actions", response_model=list[PersonalRuleAction])
+def get_rule_actions_for_lead(lead_id: str) -> list[PersonalRuleAction]:
+    lead = personal_store.get_lead(lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    return personal_store.list_rule_actions_for_lead(lead_id)

@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
-  DailyAction,
   LeadPriority,
   PersonalLead,
+  PersonalRuleAction,
   PersonalLeadStatus,
   PersonalOpportunityType,
   RelationshipStrength,
@@ -81,7 +81,8 @@ export default function PersonalLeadsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [createdAction, setCreatedAction] = useState<DailyAction | null>(null);
+  const [createdAction, setCreatedAction] = useState<PersonalRuleAction | null>(null);
+  const [linkedActions, setLinkedActions] = useState<PersonalRuleAction[]>([]);
 
   const selectedLead = useMemo(
     () => leads.find((item) => item.id === selectedLeadId) ?? null,
@@ -105,6 +106,22 @@ export default function PersonalLeadsPage() {
   useEffect(() => {
     void loadLeads();
   }, [loadLeads]);
+
+  useEffect(() => {
+    async function loadLinkedActions() {
+      if (!selectedLeadId) {
+        setLinkedActions([]);
+        return;
+      }
+      try {
+        const data = await personalLeadsApi.listRuleActions(selectedLeadId);
+        setLinkedActions(data);
+      } catch {
+        setLinkedActions([]);
+      }
+    }
+    void loadLinkedActions();
+  }, [selectedLeadId]);
 
   function hydrateForm(lead: PersonalLead) {
     setFormData({
@@ -206,6 +223,7 @@ export default function PersonalLeadsPage() {
       const action = await personalLeadsApi.createRuleAction(selectedLeadId);
       setCreatedAction(action);
       setMessage("Draft Rule of 100 action created. Manual execution only.");
+      setLinkedActions((prev) => [action, ...prev]);
     } catch (err) {
       setError((err as PersonalApiError).message);
     } finally {
@@ -357,6 +375,22 @@ export default function PersonalLeadsPage() {
                 <button disabled={saving} onClick={() => void handleCreateRuleAction()} className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50">
                   Create Rule of 100 action
                 </button>
+
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">Generated Rule Actions</p>
+                  {linkedActions.length === 0 ? (
+                    <p className="text-xs text-slate-400">No linked actions yet.</p>
+                  ) : (
+                    linkedActions.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-white/10 bg-white/5 p-2">
+                        <p className="text-xs text-slate-200">Status: {item.status}</p>
+                        <p className="text-xs text-slate-300">Created: {new Date(item.createdAt).toLocaleString()}</p>
+                        <p className="text-xs text-slate-300">Follow-up: {item.followUpDate ?? "-"}</p>
+                        <p className="text-xs text-slate-300">Message: {item.suggestedMessage.slice(0, 120)}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-slate-300">Select a lead to view details.</p>
@@ -364,7 +398,7 @@ export default function PersonalLeadsPage() {
 
             {createdAction ? (
               <div className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 p-3 text-xs text-cyan-100">
-                Created draft action: {createdAction.title} ({createdAction.status})
+                Created draft action: {createdAction.actionType} ({createdAction.status})
               </div>
             ) : null}
 

@@ -21,6 +21,12 @@ export function ActionCard({
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-400">{action.channel.replaceAll("_", " ")}</p>
           <h4 className="mt-1 text-base font-semibold text-white">{action.title}</h4>
+          {action.sourceType === "personal_lead" ? (
+            <div className="mt-2 flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
+              <span className="rounded-full bg-cyan-500/15 px-2 py-1 text-cyan-200">Private lead action</span>
+              <span className="rounded-full bg-white/10 px-2 py-1 text-slate-200">From Personal Mode</span>
+            </div>
+          ) : null}
         </div>
         <StatusBadge status={action.status} />
       </div>
@@ -28,6 +34,12 @@ export function ActionCard({
       <p className="text-sm text-slate-300">
         {action.targetName} · {action.targetRole} · {action.targetOrganisation}
       </p>
+
+      {action.sourceType === "personal_lead" ? (
+        <p className="text-xs text-cyan-100">
+          Source lead: {action.sourceLeadName || action.sourceLeadOrganisation || "Personal lead"}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap gap-2 text-xs">
         <span className="rounded-full bg-white/10 px-2 py-1 text-slate-200">Fit {action.fitScore}/10</span>

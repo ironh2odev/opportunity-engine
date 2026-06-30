@@ -1,4 +1,6 @@
 import copy
+import os
+import tempfile
 import unittest
 
 from fastapi.testclient import TestClient
@@ -19,6 +21,13 @@ class RuleOf100ApiTests(unittest.TestCase):
             setattr(mock_data.RULE_OF_100_PLAN, field_name, copy.deepcopy(value))
         mock_data.RULE_OF_100_ACTIONS[:] = copy.deepcopy(self.actions_backup)
         mock_data.APPROVAL_RECORDS[:] = copy.deepcopy(self.approvals_backup)
+        if "OE_PERSONAL_DB_PATH" in os.environ:
+            del os.environ["OE_PERSONAL_DB_PATH"]
+
+    def _personal_client(self):
+        temp_dir = tempfile.TemporaryDirectory()
+        os.environ["OE_PERSONAL_DB_PATH"] = os.path.join(temp_dir.name, "personal_test.db")
+        return TestClient(app), temp_dir
 
     def _find_action(self, *, approval_required: bool) -> str:
         for action in mock_data.RULE_OF_100_ACTIONS:
@@ -110,6 +119,74 @@ class RuleOf100ApiTests(unittest.TestCase):
             approval = approvals_response.json()[0]
             self.assertIn("approved_by", approval)
             self.assertIn("approved_at", approval)
+
+    def test_personal_generated_action_appears_in_queue_with_metadata(self) -> None:
+        client, temp_dir = self._personal_client()
+        self.addCleanup(temp_dir.cleanup)
+
+        lead_response = client.post(
+            "/personal/leads",
+            json={
+                "name": "Jordan Lee",
+                "role": "Founder",
+                "organisation": "Northfield Systems",
+                "source": "manual",
+                "opportunity_type": "client",
+                "relationship_strength": "warm",
+                "status": "new",
+                "fit_score": 8,
+                "priority": "high",
+                "next_action": "prepare outreach draft",
+            },
+        )
+        self.assertEqual(lead_response.status_code, 200)
+        lead_id = lead_response.json()["id"]
+
+        action_response = client.post(f"/personal/leads/{lead_id}/create-rule-action")
+        self.assertEqual(action_response.status_code, 200)
+        personal_action_id = action_response.json()["id"]
+
+        queue_response = client.get("/rule-of-100/actions")
+        self.assertEqual(queue_response.status_code, 200)
+        queue = queue_response.json()
+        personal_action = next(item for item in queue if item["id"] == personal_action_id)
+        self.assertEqual(personal_action["source_type"], "personal_lead")
+        self.assertEqual(personal_action["source_lead_id"], lead_id)
+        self.assertEqual(personal_action["private_mode"], True)
+        self.assertEqual(personal_action["source_lead_name"], "Jordan Lee")
+
+    def test_personal_action_approval_guard_still_applies(self) -> None:
+        client, temp_dir = self._personal_client()
+        self.addCleanup(temp_dir.cleanup)
+
+        lead_response = client.post(
+            "/personal/leads",
+            json={
+                "name": "Jordan Lee",
+                "role": "Founder",
+                "organisation": "Northfield Systems",
+                "source": "manual",
+                "opportunity_type": "client",
+                "relationship_strength": "warm",
+                "status": "new",
+                "fit_score": 8,
+                "priority": "high",
+                "next_action": "prepare outreach draft",
+            },
+        )
+        lead_id = lead_response.json()["id"]
+        action_response = client.post(f"/personal/leads/{lead_id}/create-rule-action")
+        action_id = action_response.json()["id"]
+
+        complete_before_approval = client.post(f"/rule-of-100/actions/{action_id}/complete")
+        self.assertEqual(complete_before_approval.status_code, 409)
+
+        approve_response = client.post(f"/rule-of-100/actions/{action_id}/approve")
+        self.assertEqual(approve_response.status_code, 200)
+
+        complete_after_approval = client.post(f"/rule-of-100/actions/{action_id}/complete")
+        self.assertEqual(complete_after_approval.status_code, 200)
+        self.assertEqual(complete_after_approval.json()["status"], "completed")
 
 
 if __name__ == "__main__":

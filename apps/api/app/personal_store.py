@@ -7,8 +7,11 @@ from typing import Optional
 from uuid import uuid4
 
 from app.schemas import (
+    ActionChannel,
+    DailyActionStatus,
     PersonalLead,
     PersonalLeadCreateRequest,
+    PersonalRuleAction,
     PersonalLeadUpdateRequest,
 )
 
@@ -35,6 +38,7 @@ def _connect() -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
+    conn.execute("pragma foreign_keys = on")
     conn.execute(
         """
         create table if not exists personal_leads (
@@ -61,6 +65,38 @@ def _connect() -> sqlite3.Connection:
             follow_up_date text,
             created_at text not null,
             updated_at text not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists personal_rule_actions (
+            id text primary key,
+            source_lead_id text not null,
+            channel text not null,
+            action_type text not null,
+            suggested_action text not null,
+            suggested_message text not null,
+            rationale text not null,
+            proof_to_reference text not null,
+            status text not null,
+            approval_required integer not null,
+            follow_up_date text,
+            created_at text not null,
+            updated_at text not null,
+            foreign key (source_lead_id) references personal_leads(id) on delete cascade
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists personal_rule_action_approvals (
+            id text primary key,
+            action_id text not null unique,
+            approved_by text not null,
+            approved_at text not null,
+            note text,
+            foreign key (action_id) references personal_rule_actions(id) on delete cascade
         )
         """
     )
@@ -277,6 +313,235 @@ def delete_lead(lead_id: str) -> bool:
         result = conn.execute("delete from personal_leads where id = ?", [lead_id])
         conn.commit()
         return result.rowcount > 0
+    finally:
+        conn.close()
+
+
+def _to_rule_action_model(row: sqlite3.Row) -> PersonalRuleAction:
+    return PersonalRuleAction(
+        id=row["id"],
+        source_lead_id=row["source_lead_id"],
+        channel=row["channel"],
+        action_type=row["action_type"],
+        suggested_action=row["suggested_action"],
+        suggested_message=row["suggested_message"],
+        rationale=row["rationale"],
+        proof_to_reference=row["proof_to_reference"],
+        status=row["status"],
+        approval_required=bool(row["approval_required"]),
+        follow_up_date=row["follow_up_date"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def get_rule_action(action_id: str) -> Optional[PersonalRuleAction]:
+    conn = _connect()
+    try:
+        row = conn.execute("select * from personal_rule_actions where id = ?", [action_id]).fetchone()
+        return _to_rule_action_model(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_rule_actions() -> list[PersonalRuleAction]:
+    conn = _connect()
+    try:
+        rows = conn.execute("select * from personal_rule_actions order by created_at desc").fetchall()
+        return [_to_rule_action_model(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def update_rule_action_status(action_id: str, status: DailyActionStatus) -> Optional[PersonalRuleAction]:
+    action = get_rule_action(action_id)
+    if action is None:
+        return None
+
+    conn = _connect()
+    try:
+        now = _now_iso()
+        conn.execute(
+            """
+            update personal_rule_actions
+            set status = ?, updated_at = ?
+            where id = ?
+            """,
+            [status, now, action_id],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return get_rule_action(action_id)
+
+
+def _to_rule_action_approval_model(row: sqlite3.Row):
+    return {
+        "id": row["id"],
+        "action_id": row["action_id"],
+        "approved_by": row["approved_by"],
+        "approved_at": row["approved_at"],
+        "note": row["note"],
+    }
+
+
+def get_rule_action_approval(action_id: str):
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "select * from personal_rule_action_approvals where action_id = ?",
+            [action_id],
+        ).fetchone()
+        return _to_rule_action_approval_model(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_rule_action_approvals():
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "select * from personal_rule_action_approvals order by approved_at desc"
+        ).fetchall()
+        return [_to_rule_action_approval_model(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def record_rule_action_approval(action_id: str, approved_by: str, note: Optional[str] = None):
+    existing = get_rule_action_approval(action_id)
+    if existing is not None:
+        return existing
+
+    now = _now_iso()
+    approval = {
+        "id": f"approval_{uuid4().hex[:12]}",
+        "action_id": action_id,
+        "approved_by": approved_by,
+        "approved_at": now,
+        "note": note,
+    }
+
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            insert into personal_rule_action_approvals (
+                id, action_id, approved_by, approved_at, note
+            ) values (?, ?, ?, ?, ?)
+            """,
+            [
+                approval["id"],
+                approval["action_id"],
+                approval["approved_by"],
+                approval["approved_at"],
+                approval["note"],
+            ],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return approval
+
+
+def has_rule_action_approval(action_id: str) -> bool:
+    return get_rule_action_approval(action_id) is not None
+
+
+def list_rule_actions_for_date(date: str) -> list[PersonalRuleAction]:
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            select *
+            from personal_rule_actions
+            where substr(created_at, 1, 10) = ?
+            order by created_at desc
+            """,
+            [date],
+        ).fetchall()
+        return [_to_rule_action_model(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def create_rule_action(
+    *,
+    source_lead_id: str,
+    channel: ActionChannel,
+    action_type: str,
+    suggested_action: str,
+    suggested_message: str,
+    rationale: str,
+    proof_to_reference: str,
+    status: DailyActionStatus,
+    approval_required: bool,
+    follow_up_date: Optional[str] = None,
+) -> PersonalRuleAction:
+    now = _now_iso()
+    action = PersonalRuleAction(
+        id=f"pra_{uuid4().hex[:12]}",
+        source_lead_id=source_lead_id,
+        channel=channel,
+        action_type=action_type,
+        suggested_action=suggested_action,
+        suggested_message=suggested_message,
+        rationale=rationale,
+        proof_to_reference=proof_to_reference,
+        status=status,
+        approval_required=approval_required,
+        follow_up_date=follow_up_date,
+        created_at=now,
+        updated_at=now,
+    )
+
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            insert into personal_rule_actions (
+                id, source_lead_id, channel, action_type, suggested_action, suggested_message,
+                rationale, proof_to_reference, status, approval_required, follow_up_date,
+                created_at, updated_at
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                action.id,
+                action.source_lead_id,
+                action.channel,
+                action.action_type,
+                action.suggested_action,
+                action.suggested_message,
+                action.rationale,
+                action.proof_to_reference,
+                action.status,
+                1 if action.approval_required else 0,
+                action.follow_up_date,
+                action.created_at,
+                action.updated_at,
+            ],
+        )
+        conn.commit()
+        return action
+    finally:
+        conn.close()
+
+
+def list_rule_actions_for_lead(lead_id: str) -> list[PersonalRuleAction]:
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            """
+            select *
+            from personal_rule_actions
+            where source_lead_id = ?
+            order by created_at desc
+            """,
+            [lead_id],
+        ).fetchall()
+        return [_to_rule_action_model(row) for row in rows]
     finally:
         conn.close()
 

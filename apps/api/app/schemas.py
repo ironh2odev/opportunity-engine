@@ -160,6 +160,11 @@ class DailyAction(BaseModel):
     created_at: datetime
     outbound_capable: bool = False
     approval_required: bool = False
+    source_type: str = "mock_demo"
+    source_lead_id: Optional[str] = None
+    source_lead_name: Optional[str] = None
+    source_lead_organisation: Optional[str] = None
+    private_mode: bool = False
 
 
 class ApprovalRecord(BaseModel):
@@ -273,3 +278,19 @@ class PersonalLeadCsvImportRequest(BaseModel):
 
 class DeleteResponse(BaseModel):
     deleted: bool
+
+
+class PersonalRuleAction(BaseModel):
+    id: str
+    source_lead_id: str
+    channel: ActionChannel
+    action_type: str
+    suggested_action: str
+    suggested_message: str
+    rationale: str
+    proof_to_reference: str
+    status: DailyActionStatus
+    approval_required: bool
+    follow_up_date: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
