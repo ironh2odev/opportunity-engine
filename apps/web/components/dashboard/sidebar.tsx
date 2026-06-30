@@ -13,6 +13,7 @@ import Link from "next/link";
 const navItems = [
   { label: "Daily Opportunities", icon: GaugeCircle, href: "/" },
   { label: "Rule of 100 Engine", icon: Kanban, href: "/rule-of-100" },
+  { label: "Personal Leads", icon: FolderHeart, href: "/personal-leads" },
   { label: "Saved Opportunities", icon: FolderHeart, href: "#" },
   { label: "Draft Applications", icon: PenSquare, href: "#" },
   { label: "Outreach Queue", icon: Mail, href: "#" },

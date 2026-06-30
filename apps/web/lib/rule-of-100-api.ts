@@ -69,6 +69,10 @@ export const ruleOf100Api = {
     return apiFetch<DailyRollup>("/rule-of-100/rollup");
   },
 
+  getApprovals(): Promise<ApprovalRecord[]> {
+    return apiFetch<ApprovalRecord[]>("/rule-of-100/approvals");
+  },
+
   approveAction(actionId: string): Promise<ApprovalRecord> {
     return apiFetch<ApprovalRecord>(
       `/rule-of-100/actions/${encodeURIComponent(actionId)}/approve`,

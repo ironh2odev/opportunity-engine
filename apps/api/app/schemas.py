@@ -55,6 +55,42 @@ class ConfidenceLabel(str, Enum):
     high = "high"
 
 
+class PersonalOpportunityType(str, Enum):
+    job = "job"
+    client = "client"
+    collaborator = "collaborator"
+    referrer = "referrer"
+    content = "content"
+    recruiter = "recruiter"
+    founder = "founder"
+    professional_service = "professional_service"
+
+
+class RelationshipStrength(str, Enum):
+    cold = "cold"
+    warm = "warm"
+    engaged = "engaged"
+    connected = "connected"
+    previous_client = "previous_client"
+    referral = "referral"
+
+
+class PersonalLeadStatus(str, Enum):
+    new = "new"
+    saved = "saved"
+    reviewed = "reviewed"
+    action_planned = "action_planned"
+    contacted = "contacted"
+    follow_up_due = "follow_up_due"
+    archived = "archived"
+
+
+class LeadPriority(str, Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+
+
 class Opportunity(BaseModel):
     id: str
     title: str
@@ -157,3 +193,83 @@ class ActionApprovalRequest(BaseModel):
 class RuleOf100PlanUpdateRequest(BaseModel):
     target_count: Optional[int] = Field(default=None, ge=50, le=100)
     allocation: Optional[dict[ActionChannel, int]] = None
+
+
+class PersonalLead(BaseModel):
+    id: str
+    name: str = ""
+    role: str = ""
+    organisation: str = ""
+    organisation_website: str = ""
+    linkedin_url: str = ""
+    email: str = ""
+    location: str = ""
+    source: str = ""
+    opportunity_type: PersonalOpportunityType
+    relationship_strength: RelationshipStrength
+    status: PersonalLeadStatus
+    fit_score: int = Field(ge=1, le=10)
+    priority: LeadPriority
+    problem_observed: str = ""
+    why_relevant: str = ""
+    suggested_angle: str = ""
+    notes: str = ""
+    tags: list[str] = []
+    next_action: str = ""
+    follow_up_date: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PersonalLeadCreateRequest(BaseModel):
+    name: str = ""
+    role: str = ""
+    organisation: str = ""
+    organisation_website: str = ""
+    linkedin_url: str = ""
+    email: str = ""
+    location: str = ""
+    source: str = "manual"
+    opportunity_type: PersonalOpportunityType = PersonalOpportunityType.client
+    relationship_strength: RelationshipStrength = RelationshipStrength.cold
+    status: PersonalLeadStatus = PersonalLeadStatus.new
+    fit_score: int = Field(default=5, ge=1, le=10)
+    priority: LeadPriority = LeadPriority.medium
+    problem_observed: str = ""
+    why_relevant: str = ""
+    suggested_angle: str = ""
+    notes: str = ""
+    tags: list[str] = []
+    next_action: str = ""
+    follow_up_date: Optional[str] = None
+
+
+class PersonalLeadUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    organisation: Optional[str] = None
+    organisation_website: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    email: Optional[str] = None
+    location: Optional[str] = None
+    source: Optional[str] = None
+    opportunity_type: Optional[PersonalOpportunityType] = None
+    relationship_strength: Optional[RelationshipStrength] = None
+    status: Optional[PersonalLeadStatus] = None
+    fit_score: Optional[int] = Field(default=None, ge=1, le=10)
+    priority: Optional[LeadPriority] = None
+    problem_observed: Optional[str] = None
+    why_relevant: Optional[str] = None
+    suggested_angle: Optional[str] = None
+    notes: Optional[str] = None
+    tags: Optional[list[str]] = None
+    next_action: Optional[str] = None
+    follow_up_date: Optional[str] = None
+
+
+class PersonalLeadCsvImportRequest(BaseModel):
+    csv_text: str
+
+
+class DeleteResponse(BaseModel):
+    deleted: bool

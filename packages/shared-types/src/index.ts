@@ -39,6 +39,35 @@ export type ActionChannel =
 
 export type ConfidenceLabel = "low" | "medium" | "high";
 
+export type PersonalOpportunityType =
+  | "job"
+  | "client"
+  | "collaborator"
+  | "referrer"
+  | "content"
+  | "recruiter"
+  | "founder"
+  | "professional_service";
+
+export type RelationshipStrength =
+  | "cold"
+  | "warm"
+  | "engaged"
+  | "connected"
+  | "previous_client"
+  | "referral";
+
+export type PersonalLeadStatus =
+  | "new"
+  | "saved"
+  | "reviewed"
+  | "action_planned"
+  | "contacted"
+  | "follow_up_due"
+  | "archived";
+
+export type LeadPriority = "low" | "medium" | "high";
+
 export interface Opportunity {
   id: string;
   title: string;
@@ -94,6 +123,32 @@ export interface ApprovalRecord {
   approvedBy: string;
   approvedAt: string;
   note?: string;
+}
+
+export interface PersonalLead {
+  id: string;
+  name: string;
+  role: string;
+  organisation: string;
+  organisationWebsite: string;
+  linkedinUrl: string;
+  email: string;
+  location: string;
+  source: string;
+  opportunityType: PersonalOpportunityType;
+  relationshipStrength: RelationshipStrength;
+  status: PersonalLeadStatus;
+  fitScore: number;
+  priority: LeadPriority;
+  problemObserved: string;
+  whyRelevant: string;
+  suggestedAngle: string;
+  notes: string;
+  tags: string[];
+  nextAction: string;
+  followUpDate: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DailyRollup {

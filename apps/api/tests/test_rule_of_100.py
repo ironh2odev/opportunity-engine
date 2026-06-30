@@ -90,6 +90,27 @@ class RuleOf100ApiTests(unittest.TestCase):
         self.assertEqual(bad_allocation.status_code, 400)
         self.assertIn("allocation total", bad_allocation.json()["detail"])
 
+    def test_api_contract_uses_snake_case_fields(self) -> None:
+        plan_response = self.client.get("/rule-of-100/today-plan")
+        self.assertEqual(plan_response.status_code, 200)
+        plan_json = plan_response.json()
+        self.assertIn("target_count", plan_json)
+        self.assertIn("min_target", plan_json)
+
+        actions_response = self.client.get("/rule-of-100/actions")
+        self.assertEqual(actions_response.status_code, 200)
+        action = actions_response.json()[0]
+        self.assertIn("action_type", action)
+        self.assertIn("target_organisation", action)
+        self.assertIn("approval_required", action)
+
+        approvals_response = self.client.get("/rule-of-100/approvals")
+        self.assertEqual(approvals_response.status_code, 200)
+        if approvals_response.json():
+            approval = approvals_response.json()[0]
+            self.assertIn("approved_by", approval)
+            self.assertIn("approved_at", approval)
+
 
 if __name__ == "__main__":
     unittest.main()

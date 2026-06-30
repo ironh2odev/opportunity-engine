@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ActionChannel, DailyAction, DailyActionStatus, DailyRollup, RuleOf100Plan } from "@aoe/shared-types";
+import type {
+  ActionChannel,
+  ApprovalRecord,
+  DailyAction,
+  DailyActionStatus,
+  DailyRollup,
+  RuleOf100Plan,
+} from "@aoe/shared-types";
 import { Card } from "@aoe/ui";
 import { ActionDetailPanel } from "../../components/rule-of-100/action-detail-panel";
 import { ActionQueue } from "../../components/rule-of-100/action-queue";
@@ -12,6 +19,7 @@ export default function RuleOf100Page() {
   const [plan, setPlan] = useState<RuleOf100Plan | null>(null);
   const [actions, setActions] = useState<DailyAction[]>([]);
   const [rollup, setRollup] = useState<DailyRollup | null>(null);
+  const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [filter, setFilter] = useState<DailyActionStatus | "all">("all");
   const [loadingInitial, setLoadingInitial] = useState(true);
@@ -26,18 +34,25 @@ export default function RuleOf100Page() {
     [actions, selectedActionId],
   );
 
+  const selectedApproval = useMemo(
+    () => approvals.find((item) => item.actionId === selectedActionId) ?? null,
+    [approvals, selectedActionId],
+  );
+
   const loadData = useCallback(async () => {
     setLoadingInitial(true);
     setLoadError(null);
     try {
-      const [planData, actionsData, rollupData] = await Promise.all([
+      const [planData, actionsData, rollupData, approvalsData] = await Promise.all([
         ruleOf100Api.getPlan(),
         ruleOf100Api.getActions(),
         ruleOf100Api.getRollup(),
+        ruleOf100Api.getApprovals(),
       ]);
       setPlan(planData as RuleOf100Plan);
       setActions(actionsData as DailyAction[]);
       setRollup(rollupData);
+      setApprovals(approvalsData);
       setSelectedActionId((current) => current ?? actionsData[0]?.id ?? null);
     } catch (err) {
       const apiErr = err as ApiError;
@@ -55,6 +70,10 @@ export default function RuleOf100Page() {
 
   const refreshRollup = useCallback(async () => {
     setRollup(await ruleOf100Api.getRollup());
+  }, []);
+
+  const refreshApprovals = useCallback(async () => {
+    setApprovals(await ruleOf100Api.getApprovals());
   }, []);
 
   const refreshPlanAndRollup = useCallback(async () => {
@@ -113,13 +132,23 @@ export default function RuleOf100Page() {
     setMutatingActionId(selectedActionId);
     setActionError(null);
     try {
-      await ruleOf100Api.approveAction(selectedActionId);
+      const record = await ruleOf100Api.approveAction(selectedActionId);
       setActions((prev) =>
         prev.map((item) =>
           item.id === selectedActionId ? { ...item, status: "approved" as DailyActionStatus } : item,
         ),
       );
+      setApprovals((prev) => {
+        const existingIndex = prev.findIndex((item) => item.actionId === record.actionId);
+        if (existingIndex === -1) {
+          return [...prev, record];
+        }
+        const next = [...prev];
+        next[existingIndex] = record;
+        return next;
+      });
       await refreshRollup();
+      await refreshApprovals();
     } catch (err) {
       setActionError((err as ApiError).message);
     } finally {
@@ -220,6 +249,7 @@ export default function RuleOf100Page() {
           />
           <ActionDetailPanel
             action={selectedAction}
+            approval={selectedApproval}
             onStatusChange={(status) => void handleStatusChange(status)}
             onApprove={() => void handleApprove()}
             onComplete={() => void handleComplete()}

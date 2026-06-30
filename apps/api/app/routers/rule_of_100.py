@@ -70,6 +70,11 @@ def get_rollup() -> DailyRollup:
     return get_daily_rollup()
 
 
+@router.get("/approvals", response_model=list[ApprovalRecord])
+def get_approvals() -> list[ApprovalRecord]:
+    return APPROVAL_RECORDS
+
+
 @router.patch("/actions/{action_id}/status", response_model=DailyAction)
 def update_action_status(
     action_id: str,

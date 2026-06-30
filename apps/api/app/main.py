@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers.opportunities import router as opportunities_router
+from app.routers.personal_leads import router as personal_leads_router
 from app.routers.rule_of_100 import router as rule_of_100_router
 from app.routers.tailoring import router as tailoring_router
 
@@ -35,3 +36,4 @@ def human_review_policy() -> dict[str, str]:
 app.include_router(opportunities_router)
 app.include_router(tailoring_router)
 app.include_router(rule_of_100_router)
+app.include_router(personal_leads_router)

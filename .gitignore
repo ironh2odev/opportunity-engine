@@ -24,6 +24,7 @@ venv/
 
 # Privacy and secrets
 private/
+private/local-data/
 .env
 .env.local
 .env.*

@@ -1,9 +1,10 @@
-import type { DailyAction, DailyActionStatus } from "@aoe/shared-types";
+import type { ApprovalRecord, DailyAction, DailyActionStatus } from "@aoe/shared-types";
 import { Card } from "@aoe/ui";
 import { StatusBadge } from "./status-badge";
 
 export function ActionDetailPanel({
   action,
+  approval,
   onStatusChange,
   onApprove,
   onComplete,
@@ -12,6 +13,7 @@ export function ActionDetailPanel({
   onDismissError,
 }: {
   action: DailyAction | null;
+  approval?: ApprovalRecord | null;
   onStatusChange: (status: DailyActionStatus) => void;
   onApprove: () => void;
   onComplete: () => void;
@@ -28,6 +30,7 @@ export function ActionDetailPanel({
   }
 
   const completeDisabled = (action.approvalRequired && action.status !== "approved") || isLoading;
+  const isApproved = action.status === "approved" || action.status === "completed" || Boolean(approval);
 
   return (
     <Card className="space-y-4">
@@ -62,6 +65,28 @@ export function ActionDetailPanel({
       <section className="space-y-2 text-sm text-slate-200">
         <p className="font-semibold uppercase tracking-wide text-slate-300">Proof to reference</p>
         <p className="rounded-lg border border-white/10 bg-white/5 p-3">{action.proofToReference}</p>
+      </section>
+
+      <section className="space-y-2 text-sm text-slate-200">
+        <p className="font-semibold uppercase tracking-wide text-slate-300">Approval</p>
+        <div className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-1">
+          <p>
+            <span className="text-slate-400">Status:</span>{" "}
+            {isApproved ? "Approved" : "Not approved"}
+          </p>
+          <p>
+            <span className="text-slate-400">Approved by:</span>{" "}
+            {approval?.approvedBy ?? "-"}
+          </p>
+          <p>
+            <span className="text-slate-400">Approved at:</span>{" "}
+            {approval?.approvedAt ? new Date(approval.approvedAt).toLocaleString() : "-"}
+          </p>
+          <p>
+            <span className="text-slate-400">Approval note:</span>{" "}
+            {approval?.note ?? "-"}
+          </p>
+        </div>
       </section>
 
       <div className="flex flex-wrap gap-2">
@@ -118,9 +143,9 @@ export function ActionDetailPanel({
         </div>
       ) : null}
 
-      {!actionError && completeDisabled ? (
+      {!actionError && action.approvalRequired && !isApproved ? (
         <p className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-200">
-          This action is outbound-capable. Approve it first before marking complete.
+          Approval required before completion for outbound-capable actions.
         </p>
       ) : null}
     </Card>
