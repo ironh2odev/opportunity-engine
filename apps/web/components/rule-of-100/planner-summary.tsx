@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { ActionChannel, DailyRollup, RuleOf100Plan } from "@aoe/shared-types";
 import { Card } from "@aoe/ui";
 
@@ -17,12 +18,40 @@ export function PlannerSummary({
   rollup,
   onTargetCountChange,
   onAllocationChange,
+  isSaving = false,
 }: {
   plan: RuleOf100Plan;
   rollup: DailyRollup;
   onTargetCountChange: (value: number) => void;
   onAllocationChange: (channel: ActionChannel, value: number) => void;
+  isSaving?: boolean;
 }) {
+  const [targetDraft, setTargetDraft] = useState(String(plan.targetCount));
+  const [allocationDraft, setAllocationDraft] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setTargetDraft(String(plan.targetCount));
+    setAllocationDraft(
+      Object.fromEntries(
+        Object.entries(plan.allocation).map(([channel, count]) => [channel, String(count)]),
+      ),
+    );
+  }, [plan.allocation, plan.targetCount]);
+
+  function commitTarget() {
+    const parsed = Number(targetDraft);
+    if (!Number.isNaN(parsed)) {
+      onTargetCountChange(parsed);
+    }
+  }
+
+  function commitAllocation(channel: ActionChannel) {
+    const parsed = Number(allocationDraft[channel] ?? plan.allocation[channel] ?? 0);
+    if (!Number.isNaN(parsed)) {
+      onAllocationChange(channel, parsed);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card className="border-white/15 bg-slate-900/75">
@@ -40,9 +69,16 @@ export function PlannerSummary({
               type="number"
               min={plan.minTarget}
               max={plan.maxTarget}
-              value={plan.targetCount}
-              onChange={(event) => onTargetCountChange(Number(event.target.value))}
-              className="mt-1 w-24 rounded-md border border-white/20 bg-slate-950 px-2 py-1 text-right [font-family:var(--font-sora)] text-2xl font-bold text-white"
+              value={targetDraft}
+              onChange={(event) => setTargetDraft(event.target.value)}
+              onBlur={commitTarget}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  commitTarget();
+                }
+              }}
+              disabled={isSaving}
+              className="mt-1 w-24 rounded-md border border-white/20 bg-slate-950 px-2 py-1 text-right [font-family:var(--font-sora)] text-2xl font-bold text-white disabled:opacity-60"
             />
             <p className="text-xs text-slate-300">Supported range {plan.minTarget}-{plan.maxTarget}</p>
           </div>
@@ -71,11 +107,18 @@ export function PlannerSummary({
                 type="number"
                 min={0}
                 max={100}
-                value={count}
+                value={allocationDraft[channel] ?? String(count)}
                 onChange={(event) =>
-                  onAllocationChange(channel as ActionChannel, Number(event.target.value))
+                  setAllocationDraft((prev) => ({ ...prev, [channel]: event.target.value }))
                 }
-                className="mt-1 w-20 rounded-md border border-white/20 bg-slate-950 px-2 py-1 text-xl font-semibold text-white"
+                onBlur={() => commitAllocation(channel as ActionChannel)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitAllocation(channel as ActionChannel);
+                  }
+                }}
+                disabled={isSaving}
+                className="mt-1 w-20 rounded-md border border-white/20 bg-slate-950 px-2 py-1 text-xl font-semibold text-white disabled:opacity-60"
               />
             </div>
           ))}

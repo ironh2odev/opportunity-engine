@@ -4,6 +4,7 @@ import type {
   DailyActionStatus,
   DailyRollup,
   RuleOf100Plan,
+  ActionChannel,
 } from "@aoe/shared-types";
 
 export interface ApiError {
@@ -96,5 +97,15 @@ export const ruleOf100Api = {
         body: JSON.stringify({ status }),
       },
     );
+  },
+
+  updatePlan(payload: {
+    target_count?: number;
+    allocation?: Partial<Record<ActionChannel, number>>;
+  }): Promise<RuleOf100Plan> {
+    return apiFetch<RuleOf100Plan>("/rule-of-100/today-plan", {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
   },
 };

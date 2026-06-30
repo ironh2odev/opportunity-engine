@@ -1,13 +1,15 @@
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 
 from app.mock_data import (
     APPROVAL_RECORDS,
     RULE_OF_100_ACTIONS,
-    RULE_OF_100_PLAN,
     get_daily_rollup,
+    get_rule_of_100_plan,
     has_approval,
+    update_rule_of_100_plan,
 )
 from app.schemas import (
     ActionApprovalRequest,
@@ -17,6 +19,7 @@ from app.schemas import (
     DailyActionStatus,
     DailyRollup,
     RuleOf100Plan,
+    RuleOf100PlanUpdateRequest,
 )
 
 router = APIRouter(prefix="/rule-of-100", tags=["rule-of-100"])
@@ -41,11 +44,22 @@ def _assert_completion_allowed(action: DailyAction) -> None:
 
 @router.get("/today-plan", response_model=RuleOf100Plan)
 def get_today_plan() -> RuleOf100Plan:
-    return RULE_OF_100_PLAN
+    return get_rule_of_100_plan()
+
+
+@router.patch("/today-plan", response_model=RuleOf100Plan)
+def update_today_plan(payload: RuleOf100PlanUpdateRequest) -> RuleOf100Plan:
+    try:
+        return update_rule_of_100_plan(
+            target_count=payload.target_count,
+            allocation=payload.allocation,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/actions", response_model=list[DailyAction])
-def get_daily_actions(date: str | None = None) -> list[DailyAction]:
+def get_daily_actions(date: Optional[str] = None) -> list[DailyAction]:
     if date is None:
         return RULE_OF_100_ACTIONS
     return [item for item in RULE_OF_100_ACTIONS if item.date == date]
@@ -71,8 +85,13 @@ def update_action_status(
 
 
 @router.post("/actions/{action_id}/approve", response_model=ApprovalRecord)
-def approve_action(action_id: str, payload: ActionApprovalRequest) -> ApprovalRecord:
+def approve_action(
+    action_id: str,
+    payload: Optional[ActionApprovalRequest] = None,
+) -> ApprovalRecord:
     action = _find_action(action_id)
+
+    approval_payload = payload or ActionApprovalRequest()
 
     existing = next((record for record in APPROVAL_RECORDS if record.action_id == action_id), None)
     if existing is not None:
@@ -82,9 +101,10 @@ def approve_action(action_id: str, payload: ActionApprovalRequest) -> ApprovalRe
     record = ApprovalRecord(
         id=f"approval_{len(APPROVAL_RECORDS) + 1:03d}",
         action_id=action_id,
-        approved_by=payload.approved_by,
+        approved_by=approval_payload.approved_by,
         approved_at=datetime.utcnow(),
-        note=payload.note or "Approved for manual execution. No auto-send or auto-apply.",
+        note=approval_payload.note
+        or "Approved for manual execution. No auto-send or auto-apply.",
     )
     APPROVAL_RECORDS.append(record)
     action.status = DailyActionStatus.approved

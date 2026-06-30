@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from app.schemas import (
     ActionChannel,
@@ -115,6 +116,36 @@ RULE_OF_100_PLAN = RuleOf100Plan(
         "Allocation is editable. Connection requests are optional and can be reduced when platform limits apply."
     ),
 )
+
+
+def get_rule_of_100_plan() -> RuleOf100Plan:
+    return RULE_OF_100_PLAN
+
+
+def update_rule_of_100_plan(
+    *,
+    target_count: Optional[int] = None,
+    allocation: Optional[dict[ActionChannel, int]] = None,
+) -> RuleOf100Plan:
+    updated_target = RULE_OF_100_PLAN.target_count if target_count is None else target_count
+    updated_allocation = dict(RULE_OF_100_PLAN.allocation)
+
+    if allocation is not None:
+        for channel, value in allocation.items():
+            updated_allocation[channel] = value
+
+    if updated_target < RULE_OF_100_PLAN.min_target or updated_target > RULE_OF_100_PLAN.max_target:
+        raise ValueError("targetCount must be between 50 and 100")
+
+    if any(value < 0 for value in updated_allocation.values()):
+        raise ValueError("allocation values must be non-negative")
+
+    if sum(updated_allocation.values()) > updated_target:
+        raise ValueError("allocation total cannot exceed targetCount")
+
+    RULE_OF_100_PLAN.target_count = updated_target
+    RULE_OF_100_PLAN.allocation = updated_allocation
+    return RULE_OF_100_PLAN
 
 CHANNEL_SEQUENCE: list[ActionChannel] = []
 for channel_name, count in RULE_OF_100_PLAN.allocation.items():

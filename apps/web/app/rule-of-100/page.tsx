@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ActionChannel, DailyAction, DailyActionStatus, DailyRollup, RuleOf100Plan } from "@aoe/shared-types";
 import { Card } from "@aoe/ui";
 import { ActionDetailPanel } from "../../components/rule-of-100/action-detail-panel";
@@ -11,54 +11,34 @@ import { type ApiError, ruleOf100Api } from "../../lib/rule-of-100-api";
 export default function RuleOf100Page() {
   const [plan, setPlan] = useState<RuleOf100Plan | null>(null);
   const [actions, setActions] = useState<DailyAction[]>([]);
+  const [rollup, setRollup] = useState<DailyRollup | null>(null);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [filter, setFilter] = useState<DailyActionStatus | "all">("all");
   const [loadingInitial, setLoadingInitial] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mutatingActionId, setMutatingActionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const hasSelectedRef = useRef(false);
+  const [planSaving, setPlanSaving] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
 
   const selectedAction = useMemo(
     () => actions.find((item) => item.id === selectedActionId) ?? null,
     [actions, selectedActionId],
   );
 
-  const rollup: DailyRollup = useMemo(() => {
-    const target = plan?.targetCount ?? 50;
-    const completedCount = actions.filter((item) => item.status === "completed").length;
-    const byChannel = actions.reduce<Partial<Record<ActionChannel, number>>>((acc, item) => {
-      acc[item.channel] = (acc[item.channel] ?? 0) + 1;
-      return acc;
-    }, {});
-    return {
-      date: plan?.date ?? "",
-      targetCount: target,
-      completedCount,
-      progressPercent: Math.round((completedCount / Math.max(target, 1)) * 100),
-      pendingReviewCount: actions.filter((item) => item.status === "in_review").length,
-      approvedCount: actions.filter((item) => item.status === "approved").length,
-      completedApprovedCount: actions.filter(
-        (item) => item.status === "completed" && item.approvalRequired,
-      ).length,
-      byChannel,
-    };
-  }, [actions, plan]);
-
   const loadData = useCallback(async () => {
     setLoadingInitial(true);
     setLoadError(null);
     try {
-      const [planData, actionsData] = await Promise.all([
+      const [planData, actionsData, rollupData] = await Promise.all([
         ruleOf100Api.getPlan(),
         ruleOf100Api.getActions(),
+        ruleOf100Api.getRollup(),
       ]);
-      setPlan(planData);
-      setActions(actionsData);
-      if (!hasSelectedRef.current && actionsData.length > 0) {
-        setSelectedActionId(actionsData[0].id);
-        hasSelectedRef.current = true;
-      }
+      setPlan(planData as RuleOf100Plan);
+      setActions(actionsData as DailyAction[]);
+      setRollup(rollupData);
+      setSelectedActionId((current) => current ?? actionsData[0]?.id ?? null);
     } catch (err) {
       const apiErr = err as ApiError;
       setLoadError(
@@ -73,18 +53,44 @@ export default function RuleOf100Page() {
     void loadData();
   }, [loadData]);
 
-  function updateTargetCount(value: number) {
+  const refreshRollup = useCallback(async () => {
+    setRollup(await ruleOf100Api.getRollup());
+  }, []);
+
+  const refreshPlanAndRollup = useCallback(async () => {
+    const [planData, rollupData] = await Promise.all([ruleOf100Api.getPlan(), ruleOf100Api.getRollup()]);
+    setPlan(planData);
+    setRollup(rollupData);
+  }, []);
+
+  async function updateTargetCount(value: number) {
     if (!plan) return;
-    const safeValue = Math.min(Math.max(value || plan.minTarget, plan.minTarget), plan.maxTarget);
-    setPlan((prev) => (prev ? { ...prev, targetCount: safeValue } : prev));
+    setPlanSaving(true);
+    setPlanError(null);
+    try {
+      await ruleOf100Api.updatePlan({ target_count: value });
+      await refreshPlanAndRollup();
+    } catch (err) {
+      setPlanError((err as ApiError).message);
+      await refreshPlanAndRollup();
+    } finally {
+      setPlanSaving(false);
+    }
   }
 
-  function updateAllocation(channel: ActionChannel, value: number) {
+  async function updateAllocation(channel: ActionChannel, value: number) {
     if (!plan) return;
-    const safeValue = Math.max(0, Number.isFinite(value) ? value : 0);
-    setPlan((prev) =>
-      prev ? { ...prev, allocation: { ...prev.allocation, [channel]: safeValue } } : prev,
-    );
+    setPlanSaving(true);
+    setPlanError(null);
+    try {
+      await ruleOf100Api.updatePlan({ allocation: { [channel]: value } });
+      await refreshPlanAndRollup();
+    } catch (err) {
+      setPlanError((err as ApiError).message);
+      await refreshPlanAndRollup();
+    } finally {
+      setPlanSaving(false);
+    }
   }
 
   async function handleStatusChange(status: DailyActionStatus) {
@@ -94,6 +100,7 @@ export default function RuleOf100Page() {
     try {
       const updated = await ruleOf100Api.updateStatus(selectedActionId, status);
       setActions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      await refreshRollup();
     } catch (err) {
       setActionError((err as ApiError).message);
     } finally {
@@ -112,6 +119,7 @@ export default function RuleOf100Page() {
           item.id === selectedActionId ? { ...item, status: "approved" as DailyActionStatus } : item,
         ),
       );
+      await refreshRollup();
     } catch (err) {
       setActionError((err as ApiError).message);
     } finally {
@@ -126,6 +134,7 @@ export default function RuleOf100Page() {
     try {
       const updated = await ruleOf100Api.completeAction(selectedActionId);
       setActions((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      await refreshRollup();
     } catch (err) {
       setActionError((err as ApiError).message);
     } finally {
@@ -182,14 +191,21 @@ export default function RuleOf100Page() {
           </div>
         </header>
 
-        {plan && (
+        {plan && rollup && (
           <PlannerSummary
             plan={plan}
             rollup={rollup}
             onTargetCountChange={updateTargetCount}
             onAllocationChange={updateAllocation}
+            isSaving={planSaving}
           />
         )}
+
+        {planError ? (
+          <Card className="border-amber-400/30 bg-amber-500/10 text-sm text-amber-100">
+            {planError}
+          </Card>
+        ) : null}
 
         <section className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
           <ActionQueue

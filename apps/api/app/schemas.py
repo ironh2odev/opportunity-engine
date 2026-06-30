@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -119,7 +120,7 @@ class DailyAction(BaseModel):
     rationale: str
     proof_to_reference: str
     status: DailyActionStatus
-    follow_up_date: str | None = None
+    follow_up_date: Optional[str] = None
     created_at: datetime
     outbound_capable: bool = False
     approval_required: bool = False
@@ -130,7 +131,7 @@ class ApprovalRecord(BaseModel):
     action_id: str
     approved_by: str
     approved_at: datetime
-    note: str | None = None
+    note: Optional[str] = None
 
 
 class DailyRollup(BaseModel):
@@ -150,4 +151,9 @@ class ActionStatusUpdateRequest(BaseModel):
 
 class ActionApprovalRequest(BaseModel):
     approved_by: str = "human.operator"
-    note: str | None = None
+    note: Optional[str] = None
+
+
+class RuleOf100PlanUpdateRequest(BaseModel):
+    target_count: Optional[int] = Field(default=None, ge=50, le=100)
+    allocation: Optional[dict[ActionChannel, int]] = None
