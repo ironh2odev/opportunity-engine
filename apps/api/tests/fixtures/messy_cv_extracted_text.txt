@@ -1,0 +1,50 @@
+Danaishe
+
+Mamvura
+
+AI
+
+Product
+
+&
+
+Systems
+
+Engineer
+
+danaishe@example.test
+linkedin.com/in/sanitized-profile
+
+PROFILE SUMMARY
+Product-minded engineer focused on AI-enabled systems and measurable execution quality.
+I build backend and frontend platforms that improve decision speed and operational reliability.
+
+PROJECTS
+- Opportunity Engine Platform
+  Built FastAPI services and Next.js interfaces for capture, approvals, and review-first workflows.
+  Technical stack: Python · FastAPI · Next.js · React · TypeScript · Docker
+  Reduced manual triage time by 42% and improved review throughput by 30%.
+- Workflow Reliability Program
+  Deployed Dockerized services and added rollback-safe release flows.
+  Improved deployment reliability and reduced critical incidents by 25%.
+
+EXPERIENCE
+- Senior Systems Engineer, Example Labs
+  Launched internal tooling used by 120+ team members across delivery groups.
+  Delivered automation improvements that reduced turnaround time by 35%.
+- Product Systems Engineer, Sample Works
+  Built analytics and intake services for cross-functional operations.
+  Increased process visibility and reduced handoff delays by 28%.
+
+EDUCATION
+BSc Computer Science
+
+Technical Proficiency
+Python · FastAPI · Next.js · React · TypeScript · Docker · PostgreSQL
+
+Job Related Abilities
+Leadership · stakeholder management · communication · mentoring · problem solving
+
+LANGUAGES
+English
+Shona

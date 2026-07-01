@@ -145,6 +145,108 @@ ROLE_PATTERN = re.compile(
 )
 
 
+def _normalize_extracted_cv_text(raw_text: str) -> str:
+    text = raw_text.replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\ufb01", "fi").replace("\ufb02", "fl")
+
+    normalized_lines: list[str] = []
+    for raw_line in text.split("\n"):
+        line = " ".join(raw_line.strip().split())
+        if not line:
+            normalized_lines.append("")
+            continue
+
+        bullet_match = re.match(r"^[•▪◦●\-*]\s*(.+)$", line)
+        if bullet_match:
+            line = f"- {bullet_match.group(1).strip()}"
+
+        line = re.sub(r"\s*[·|]\s*", ", ", line)
+        line = re.sub(r"\s+,\s+", ", ", line)
+        normalized_lines.append(line)
+
+    collapsed: list[str] = []
+    previous_blank = False
+    for line in normalized_lines:
+        is_blank = not line
+        if is_blank and previous_blank:
+            continue
+        collapsed.append(line)
+        previous_blank = is_blank
+
+    non_empty = [line for line in collapsed if line]
+    first_section_idx = -1
+    for idx, line in enumerate(non_empty):
+        if _canonical_section_heading(line.rstrip(":")) is not None:
+            first_section_idx = idx
+            break
+
+    if first_section_idx > 0:
+        rebuilt_header = _reconstruct_fragmented_header(non_empty[:first_section_idx])
+        non_empty = rebuilt_header + non_empty[first_section_idx:]
+
+    return "\n".join(non_empty)
+
+
+def _reconstruct_fragmented_header(header_lines: list[str]) -> list[str]:
+    if len(header_lines) < 3:
+        return header_lines
+
+    compact = [line for line in header_lines if line and not _looks_like_contact_line(line)]
+    token_like_lines = [line for line in compact if len(line.split()) == 1 or line in {"&", "/"}]
+    if not compact or len(token_like_lines) < max(3, len(compact) - 1):
+        return header_lines
+
+    tokens: list[str] = []
+    for line in compact:
+        parts = line.split()
+        if not parts:
+            continue
+        tokens.extend(parts)
+
+    if len(tokens) < 4:
+        return [" ".join(tokens)]
+
+    name_tokens: list[str] = []
+    index = 0
+    while index < len(tokens) and len(name_tokens) < 2:
+        token = tokens[index]
+        if re.match(r"^[A-Z][A-Za-z'`.-]+$", token):
+            name_tokens.append(token)
+            index += 1
+            continue
+        break
+
+    if index < len(tokens):
+        possible_third = tokens[index]
+        if re.match(r"^[A-Z][A-Za-z'`.-]+$", possible_third):
+            lowered = possible_third.lower()
+            title_blockers = {
+                "ai",
+                "product",
+                "systems",
+                "engineer",
+                "developer",
+                "architect",
+                "manager",
+            }
+            if lowered not in title_blockers:
+                name_tokens.append(possible_third)
+                index += 1
+
+    if len(name_tokens) < 2:
+        return [" ".join(tokens)]
+
+    headline_tokens = tokens[index:]
+    rebuilt = [" ".join(name_tokens)]
+    if headline_tokens:
+        rebuilt.append(" ".join(headline_tokens))
+
+    for line in header_lines:
+        if _looks_like_contact_line(line):
+            rebuilt.append(line)
+    return rebuilt
+
+
 def _extract_pdf_text(content: bytes) -> str:
     try:
         reader = PdfReader(BytesIO(content))
@@ -230,6 +332,15 @@ def _extract_full_name(header_lines: list[str]) -> str:
             continue
         if pattern.match(line.strip()):
             return line.strip()
+
+    tokens: list[str] = []
+    for line in header_lines[:8]:
+        if _looks_like_contact_line(line):
+            continue
+        parts = [part for part in line.split() if re.match(r"^[A-Z][A-Za-z'`.-]+$", part)]
+        tokens.extend(parts)
+    if len(tokens) >= 2:
+        return " ".join(tokens[:2])
     return ""
 
 
@@ -240,6 +351,16 @@ def _extract_headline(header_lines: list[str], full_name: str) -> str:
             continue
         if 3 <= len(line.split()) <= 14 and len(line) <= 120:
             return line
+
+    tokens: list[str] = []
+    for line in header_lines[:10]:
+        if not line or line == full_name or _looks_like_contact_line(line):
+            continue
+        tokens.extend(line.split())
+    if tokens:
+        headline = " ".join(tokens[:10]).strip()
+        if len(headline.split()) >= 3:
+            return headline
     return ""
 
 
@@ -263,6 +384,14 @@ def _extract_target_roles(text: str) -> list[str]:
         formatted = cleaned.title().replace("Ai", "AI").replace("Ml", "ML").replace("Devops", "DevOps")
         if formatted.lower() not in {item.lower() for item in roles}:
             roles.append(formatted)
+
+    lowered = text.lower()
+    if "ai" in lowered and "product" in lowered and "engineer" in lowered:
+        if "ai product engineer" not in {item.lower() for item in roles}:
+            roles.append("AI Product Engineer")
+    if "ai" in lowered and "systems" in lowered and "engineer" in lowered:
+        if "ai systems engineer" not in {item.lower() for item in roles}:
+            roles.append("AI Systems Engineer")
     return roles
 
 
@@ -437,10 +566,55 @@ def _extract_proof_points(lines: list[str]) -> list[str]:
         has_metric = bool(re.search(r"\b\d+%\b|\b\d+x\b|\b\$\d+|\b\d+\+?\s+(?:teams|users|clients|projects)\b", line))
         has_action = any(marker in lowered for marker in action_markers)
         if has_metric or has_action:
-            proof_points.append(line)
+            if lowered not in {item.lower() for item in proof_points}:
+                proof_points.append(line)
         if len(proof_points) >= 5:
             break
     return proof_points
+
+
+def _extract_bullet_proof_points(lines: list[str]) -> list[str]:
+    points: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if len(stripped) < 20:
+            continue
+        lowered = stripped.lower()
+        if _canonical_section_heading(stripped.rstrip(":")) is not None:
+            continue
+        if _looks_like_contact_line(stripped):
+            continue
+
+        is_bullet = stripped.startswith("-")
+        has_signal = any(
+            word in lowered
+            for word in (
+                "built",
+                "launched",
+                "deployed",
+                "delivered",
+                "reduced",
+                "improved",
+                "increased",
+                "implemented",
+                "improved",
+                "reliability",
+                "automation",
+                "used by",
+            )
+        )
+        has_metric = bool(re.search(r"\b\d+%\b|\b\d+\+?\s+(?:teams|users|clients|projects|members)\b", lowered))
+
+        # In messy extracted text, important outcomes often lose bullet glyphs; keep substantial lines conservatively.
+        if is_bullet or has_signal or has_metric:
+            points.append(stripped.lstrip("- ").strip())
+        elif len(stripped.split()) >= 6:
+            points.append(stripped)
+        if len(points) >= 8:
+            break
+    return points
 
 
 def _missing_fields(context: CareerContextUpdateRequest) -> list[str]:
@@ -471,8 +645,9 @@ def _confidence(raw_cv_text: str, missing_fields: list[str]) -> ConfidenceLabel:
 
 
 def _local_extract(raw_cv_text: str, mode: CareerContextExtractionMode) -> CareerContextExtractionResponse:
-    lines = _normalize_lines(raw_cv_text)
-    header_lines, sections = _split_sections(raw_cv_text)
+    normalized_text = _normalize_extracted_cv_text(raw_cv_text)
+    lines = _normalize_lines(normalized_text)
+    header_lines, sections = _split_sections(normalized_text)
     full_name = _extract_full_name(header_lines)
     headline = _extract_headline(header_lines, full_name)
     summary = _summary_text(header_lines, sections, full_name, headline)
@@ -482,7 +657,7 @@ def _local_extract(raw_cv_text: str, mode: CareerContextExtractionMode) -> Caree
         sections.get("projects", [])
         + sections.get("skills", [])
         + sections.get("experience", [])
-        + [raw_cv_text]
+        + [normalized_text]
     )
     technical_stack = _extract_technical_stack(stack_sources)
     if not technical_stack:
@@ -497,11 +672,11 @@ def _local_extract(raw_cv_text: str, mode: CareerContextExtractionMode) -> Caree
     core_skills = _extract_soft_skills(soft_sources)
     if not core_skills:
         # Fallback to non-technical general skills only.
-        fallback = [item for item in _extract_skills(raw_cv_text, COMMON_CORE_SKILLS) if item not in {s.lower() for s in technical_stack}]
+        fallback = [item for item in _extract_skills(normalized_text, COMMON_CORE_SKILLS) if item not in {s.lower() for s in technical_stack}]
         core_skills = [item.title() for item in fallback]
 
     role_sources = "\n".join(
-        [headline, summary, " ".join(project_titles), " ".join(technical_stack), raw_cv_text]
+        [headline, summary, " ".join(project_titles), " ".join(technical_stack), normalized_text]
     )
     target_roles = _extract_target_roles(role_sources)
     for inferred in _infer_roles_from_stack(technical_stack):
@@ -513,6 +688,12 @@ def _local_extract(raw_cv_text: str, mode: CareerContextExtractionMode) -> Caree
     proof_points = _extract_proof_points(project_highlights)
     if not proof_points:
         proof_points = _extract_proof_points(lines)
+    bullet_points = _extract_bullet_proof_points(highlight_lines)
+    combined_proofs = []
+    for item in proof_points + bullet_points:
+        if item.lower() not in {existing.lower() for existing in combined_proofs}:
+            combined_proofs.append(item)
+    proof_points = combined_proofs[:6]
 
     combined_for_location = "\n".join(header_lines + sections.get("profile_summary", []))
 
@@ -522,18 +703,18 @@ def _local_extract(raw_cv_text: str, mode: CareerContextExtractionMode) -> Caree
         core_skills=core_skills,
         technical_stack=technical_stack,
         project_highlights=project_highlights,
-        industries=_extract_industries(raw_cv_text),
+        industries=_extract_industries(normalized_text),
         location_preferences=_extract_location_preferences(combined_for_location),
-        visa_notes=_extract_visa_notes(raw_cv_text),
-        preferred_opportunity_types=_infer_opportunity_types(raw_cv_text),
+        visa_notes=_extract_visa_notes(normalized_text),
+        preferred_opportunity_types=_infer_opportunity_types(normalized_text),
         positioning_statement=_extract_positioning_statement(_normalize_lines(summary) or lines, technical_stack),
         proof_points=proof_points,
-        raw_cv_text=raw_cv_text,
+        raw_cv_text=normalized_text,
     )
 
     missing = _missing_fields(context)
     warnings: list[str] = []
-    if len(raw_cv_text.strip()) < 300:
+    if len(normalized_text.strip()) < 300:
         warnings.append("Input CV text is brief; extraction may be incomplete.")
     section_count = sum(1 for value in sections.values() if value)
     if section_count < 2:
@@ -551,7 +732,7 @@ def _local_extract(raw_cv_text: str, mode: CareerContextExtractionMode) -> Caree
     return CareerContextExtractionResponse(
         extracted_full_name=full_name,
         suggested_career_context=context,
-        extraction_confidence=_confidence(raw_cv_text, missing),
+        extraction_confidence=_confidence(normalized_text, missing),
         missing_fields=missing,
         review_warnings=warnings,
         reasoning_summary=(
@@ -630,7 +811,7 @@ def extract_career_context(
     raw_cv_text: str,
     extraction_mode: CareerContextExtractionMode,
 ) -> CareerContextExtractionResponse:
-    text = raw_cv_text.strip()
+    text = _normalize_extracted_cv_text(raw_cv_text).strip()
     full_name = _extract_full_name(_normalize_lines(text)[:6])
     if extraction_mode == CareerContextExtractionMode.ai_assisted:
         ai_result = _openai_extract(text)

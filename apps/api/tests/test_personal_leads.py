@@ -2,6 +2,7 @@ import os
 import tempfile
 import unittest
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import patch
 
 from docx import Document
@@ -10,36 +11,11 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-REPRESENTATIVE_CV_TEXT = """Alex Rivera
-Senior Full Stack Engineer
-alex.rivera@example.com | linkedin.com/in/alexrivera
+FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures"
 
-Profile Summary
-Full stack engineer focused on product-grade AI-enabled workflow platforms. I build reliable backend and frontend systems and ship measurable outcomes.
 
-Projects
-- Opportunity Engine Platform
-    Built FastAPI services and Next.js interfaces for lead capture, approvals, and review-first workflows.
-    Tech: Python, FastAPI, Next.js, TypeScript, Docker, PostgreSQL
-    Reduced manual triage time by 42% and improved review throughput by 30%.
-
-Experience
-- Senior Engineer, Nimbus Labs
-    Launched automation features used by 120+ teams.
-    Deployed containerized services with Docker and CI workflows.
-
-Technical Proficiency
-Python, FastAPI, Next.js, TypeScript, Docker, PostgreSQL
-
-Job Related Abilities
-Leadership, stakeholder management, communication, mentoring, problem solving
-
-Languages
-English, Spanish
-
-Education
-BSc Computer Science
-"""
+def _read_fixture(name: str) -> str:
+    return (FIXTURE_DIR / name).read_text(encoding="utf-8")
 
 
 class PersonalLeadsApiTests(unittest.TestCase):
@@ -207,7 +183,7 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         response = self.client.post(
             "/personal/career-context/extract",
             data={
-                "raw_cv_text": REPRESENTATIVE_CV_TEXT,
+                "raw_cv_text": _read_fixture("messy_cv_extracted_text.txt"),
                 "extraction_mode": "local",
             },
         )
@@ -215,13 +191,23 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         body = response.json()
         suggested = body["suggested_career_context"]
 
-        self.assertEqual(body["extracted_full_name"], "Alex Rivera")
-        self.assertEqual(suggested["current_headline"], "Senior Full Stack Engineer")
+        self.assertEqual(body["extracted_full_name"], "Danaishe Mamvura")
+        self.assertIn("AI Product", suggested["current_headline"])
+        self.assertIn("Systems Engineer", suggested["current_headline"])
         self.assertGreater(len(suggested["target_roles"]), 0)
-        self.assertGreater(len(suggested["proof_points"]), 0)
+        self.assertTrue(
+            any(
+                role in {item.lower() for item in suggested["target_roles"]}
+                for role in {"ai product engineer", "ai systems engineer"}
+            )
+        )
+
+        proof_points = suggested["proof_points"]
+        self.assertGreaterEqual(len(proof_points), 4)
+        self.assertEqual(len({item.lower() for item in proof_points}), len(proof_points))
 
         stack_lower = {item.lower() for item in suggested["technical_stack"]}
-        for expected in {"fastapi", "next.js", "python", "typescript", "docker"}:
+        for expected in {"fastapi", "next.js", "python", "typescript", "docker", "react"}:
             self.assertIn(expected, stack_lower)
 
         persisted_state = self.client.get("/personal/career-context")
