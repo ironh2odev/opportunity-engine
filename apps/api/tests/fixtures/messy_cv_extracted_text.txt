@@ -24,29 +24,26 @@ Product-minded engineer focused on AI-enabled systems and measurable execution q
 I build backend and frontend platforms that improve decision speed and operational reliability.
 
 PROJECTS
-- Kindezi MVP Platform
+- AI-Powered Football Analytics System
   Built FastAPI services and Next.js interfaces for capture, approvals, and review-first workflows.
   Technical stack: Python · FastAPI · Next.js · React · TypeScript · Docker · Tailwind CSS · Render · Vercel · Railway · GitHub
   Reduced manual triage time by 42% and improved review throughput by 30%.
-- Medical AI Assistant
+- AI-Powered Medical Diagnosis & Treatment Assistant
   Developed healthcare assistant workflows with LangChain and GPT-4 API for clinical triage guidance.
   Implemented TensorFlow, OpenCV, scikit-learn, pandas, and NumPy pipelines for model and data preprocessing.
   Improved response quality and reduced clinician preparation time by 27%.
-- Financial Portfolio Assistant
+- AI-Powered Financial Portfolio Assistant
   Designed portfolio analysis assistant with Python analytics and Chart.js reporting dashboards.
   Increased insight turnaround and improved decision support accuracy by 24%.
-- Zim Cyber City Digital Platform
-  Built mobile-facing features with Flutter and Firebase for service delivery workflows.
-  Delivered MVP capabilities for citizen onboarding and digital platform operations.
 
 EXPERIENCE
-- Senior Systems Engineer, Example Labs
+- AI Systems Engineer, Kindezi World, Present
   Launched internal tooling used by 120+ team members across delivery groups.
   Delivered automation improvements that reduced turnaround time by 35%.
-- Product Systems Engineer, Sample Works
+- Product Systems Engineer, Zim Cyber City, 2024
   Built analytics and intake services for cross-functional operations.
   Increased process visibility and reduced handoff delays by 28%.
-- Teaching and Programming Experience
+- Teaching Fellow, United World College of Southern Africa, 2020
   Taught programming fundamentals and mentored student builders through practical project delivery.
   Completed curriculum-aligned software labs and assessment workflows.
 

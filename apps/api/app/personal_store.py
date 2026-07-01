@@ -226,6 +226,41 @@ def create_lead(payload: PersonalLeadCreateRequest) -> PersonalLead:
     if not payload.name.strip() and not payload.organisation.strip():
         raise ValueError("name or organisation is required")
 
+    role_key = payload.role.strip().lower()
+    org_key = payload.organisation.strip().lower()
+    source_key = payload.source.strip().lower()
+    source_url = (payload.linkedin_url or payload.organisation_website or "").strip().lower()
+
+    conn = _connect()
+    try:
+        existing_row: sqlite3.Row | None = None
+        if role_key and org_key and source_url:
+            existing_row = conn.execute(
+                """
+                select id from personal_leads
+                where lower(role) = ?
+                  and lower(organisation) = ?
+                  and (lower(linkedin_url) = ? or lower(organisation_website) = ?)
+                limit 1
+                """,
+                [role_key, org_key, source_url, source_url],
+            ).fetchone()
+        if existing_row is None and role_key and org_key and source_key:
+            existing_row = conn.execute(
+                """
+                select id from personal_leads
+                where lower(role) = ?
+                  and lower(organisation) = ?
+                  and lower(source) = ?
+                limit 1
+                """,
+                [role_key, org_key, source_key],
+            ).fetchone()
+        if existing_row is not None:
+            raise ValueError("Existing lead found for this source and role. Review the existing lead instead of creating a duplicate.")
+    finally:
+        conn.close()
+
     now = _now_iso()
     lead = PersonalLead(
         id=f"lead_{uuid4().hex[:12]}",

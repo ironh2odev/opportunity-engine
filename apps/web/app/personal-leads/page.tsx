@@ -253,6 +253,11 @@ export default function PersonalLeadsPage() {
 
   async function handleDeleteLead() {
     if (!selectedLeadId) return;
+    const current = leads.find((item) => item.id === selectedLeadId) ?? null;
+    const label = current?.name || `${current?.role || ""} ${current?.organisation || ""}`.trim() || "this lead";
+    const confirmed = window.confirm(`Delete ${label}? This cannot be undone.`);
+    if (!confirmed) return;
+
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -260,6 +265,28 @@ export default function PersonalLeadsPage() {
       await personalLeadsApi.remove(selectedLeadId);
       setSelectedLeadId(null);
       setFormData(emptyLeadInput);
+      setMessage("Lead deleted.");
+      await loadLeads();
+    } catch (err) {
+      setError((err as PersonalApiError).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteLeadById(leadId: string, label: string) {
+    const confirmed = window.confirm(`Delete ${label}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await personalLeadsApi.remove(leadId);
+      if (selectedLeadId === leadId) {
+        setSelectedLeadId(null);
+        setFormData(emptyLeadInput);
+      }
       setMessage("Lead deleted.");
       await loadLeads();
     } catch (err) {
@@ -374,6 +401,14 @@ export default function PersonalLeadsPage() {
     });
   }
 
+  function handleClearCareerContextDraft() {
+    setCareerContext(emptyCareerContext);
+    setCareerImportText("");
+    setCareerImportFile(null);
+    setCareerExtractionResult(null);
+    setMessage("Cleared career context draft fields. Upload or paste a new CV to extract again.");
+  }
+
   async function handleExtractCareerContext() {
     setCareerExtractBusy(true);
     setError(null);
@@ -440,7 +475,12 @@ export default function PersonalLeadsPage() {
       setSelectedLeadId(created.id);
       setCaptureResult(null);
     } catch (err) {
-      setError((err as PersonalApiError).message);
+      const apiErr = err as PersonalApiError;
+      if (apiErr.message.includes("Existing lead found")) {
+        setMessage(apiErr.message);
+      } else {
+        setError(apiErr.message);
+      }
     } finally {
       setSaving(false);
     }
@@ -467,8 +507,8 @@ export default function PersonalLeadsPage() {
         {error ? <Card className="border-rose-400/30 bg-rose-500/10 text-sm text-rose-100">{error}</Card> : null}
         {message ? <Card className="border-cyan-400/30 bg-cyan-500/10 text-sm text-cyan-100">{message}</Card> : null}
 
-        <section className="grid gap-4 xl:grid-cols-2">
-          <Card className="space-y-3">
+        <section className="grid gap-4 xl:grid-cols-[1fr_1.15fr]">
+          <Card className="space-y-4">
             <details open>
               <summary className="cursor-pointer [font-family:var(--font-sora)] text-lg font-semibold">Career Context</summary>
               <p className="mt-2 text-xs text-slate-300">
@@ -604,13 +644,23 @@ export default function PersonalLeadsPage() {
                   className="h-28 rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-xs"
                 />
               </div>
-              <button
-                disabled={careerBusy}
-                onClick={() => void handleSaveCareerContext()}
-                className="mt-3 rounded-lg border border-white/15 px-3 py-2 text-sm disabled:opacity-50"
-              >
-                Save career context
-              </button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  disabled={careerBusy}
+                  onClick={() => void handleSaveCareerContext()}
+                  className="rounded-lg border border-white/15 px-3 py-2 text-sm disabled:opacity-50"
+                >
+                  Save career context
+                </button>
+                <button
+                  type="button"
+                  disabled={careerBusy}
+                  onClick={handleClearCareerContextDraft}
+                  className="rounded-lg border border-amber-300/40 px-3 py-2 text-sm text-amber-100 disabled:opacity-50"
+                >
+                  Clear career context
+                </button>
+              </div>
             </details>
           </Card>
 
@@ -623,53 +673,76 @@ export default function PersonalLeadsPage() {
             <p className="text-xs text-slate-300">
               CV/career context is used only to support fit scoring and drafting.
             </p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <select
-                value={captureSourceType}
-                onChange={(e) => setCaptureSourceType(e.target.value as CaptureSourceType)}
-                className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
-              >
-                {captureSourceTypes.map((item) => (
-                  <option key={item} value={item}>{item}</option>
-                ))}
-              </select>
-              <select
-                value={captureGoal}
-                onChange={(e) => setCaptureGoal(e.target.value as PersonalOpportunityType)}
-                className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
-              >
-                {opportunityTypes.map((item) => (
-                  <option key={item} value={item}>{item}</option>
-                ))}
-              </select>
+            <p className="text-xs text-slate-300">
+              Choose what you are pasting and what you want to evaluate.
+            </p>
+            <div className="grid gap-4 md:grid-cols-2 md:items-start">
+              <div className="grid gap-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-300">Source type</label>
+                <select
+                  value={captureSourceType}
+                  onChange={(e) => setCaptureSourceType(e.target.value as CaptureSourceType)}
+                  className="h-10 rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                >
+                  {captureSourceTypes.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+                <p className="min-h-[3.5rem] text-[11px] leading-relaxed text-slate-400">
+                  What kind of text are you pasting? Examples: job listing, LinkedIn profile, LinkedIn post,
+                  company website, recruiter message, client website, personal notes.
+                </p>
+              </div>
+              <div className="grid gap-2">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-300">Opportunity goal</label>
+                <select
+                  value={captureGoal}
+                  onChange={(e) => setCaptureGoal(e.target.value as PersonalOpportunityType)}
+                  className="h-10 rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+                >
+                  {opportunityTypes.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+                <p className="min-h-[3.5rem] text-[11px] leading-relaxed text-slate-400">
+                  What kind of opportunity are you evaluating? Examples: job, client, collaborator, referrer,
+                  content, recruiter, founder, professional service.
+                </p>
+              </div>
             </div>
-            <input
-              placeholder="Optional source URL"
-              value={captureSourceUrl}
-              onChange={(e) => setCaptureSourceUrl(e.target.value)}
-              className="rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
-            />
-            <textarea
-              placeholder="Paste job listing, recruiter message, profile text, or notes"
-              value={captureRawText}
-              onChange={(e) => setCaptureRawText(e.target.value)}
-              className="h-36 rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
-            />
-            <label className="flex items-center gap-2 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={captureUseCareerContext}
-                onChange={(e) => setCaptureUseCareerContext(e.target.checked)}
+            <div className="grid gap-3">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-300">Source text</label>
+              <textarea
+                placeholder="Paste job listing, recruiter message, profile text, or notes"
+                value={captureRawText}
+                onChange={(e) => setCaptureRawText(e.target.value)}
+                className="h-44 w-full rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
               />
-              Use career context for fit scoring
-            </label>
-            <button
-              disabled={captureBusy || !captureRawText.trim()}
-              onClick={() => void handleExtract()}
-              className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50"
-            >
-              Extract draft lead
-            </button>
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-300">Optional source URL</label>
+              <input
+                placeholder="https://example.com/opportunity"
+                value={captureSourceUrl}
+                onChange={(e) => setCaptureSourceUrl(e.target.value)}
+                className="h-10 w-full rounded-md border border-white/20 bg-slate-950 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="grid gap-3">
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={captureUseCareerContext}
+                  onChange={(e) => setCaptureUseCareerContext(e.target.checked)}
+                />
+                Use career context for fit scoring
+              </label>
+              <button
+                disabled={captureBusy || !captureRawText.trim()}
+                onClick={() => void handleExtract()}
+                className="w-fit rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50"
+              >
+                Extract draft lead
+              </button>
+            </div>
 
             {captureResult ? (
               <div className="space-y-2 rounded-lg border border-white/10 bg-white/5 p-3 text-xs text-slate-200">
@@ -757,23 +830,44 @@ export default function PersonalLeadsPage() {
                 <p className="text-sm text-slate-300">Loading leads...</p>
               ) : (
                 leads.map((lead) => (
-                  <button
+                  <div
                     key={lead.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedLeadId(lead.id);
-                      hydrateForm(lead);
-                    }}
                     className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${
                       selectedLeadId === lead.id
                         ? "border-accent/50 bg-accent/15"
                         : "border-white/10 bg-white/5 hover:bg-white/10"
                     }`}
                   >
-                    <p className="font-semibold text-white">{lead.name || lead.organisation || "Unnamed lead"}</p>
-                    <p className="text-xs text-slate-300">{lead.role} · {lead.organisation}</p>
-                    <p className="text-xs text-slate-400">{lead.opportunityType} · {lead.status} · {lead.priority}</p>
-                  </button>
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedLeadId(lead.id);
+                          hydrateForm(lead);
+                        }}
+                        className="flex-1 text-left"
+                      >
+                        <p className="font-semibold text-white">
+                          {lead.name || `${lead.role || ""} ${lead.organisation || ""}`.trim() || lead.organisation || "Unnamed lead"}
+                        </p>
+                        <p className="text-xs text-slate-300">{lead.role} · {lead.organisation}</p>
+                        <p className="text-xs text-slate-400">{lead.opportunityType} · {lead.status} · {lead.priority}</p>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() =>
+                          void handleDeleteLeadById(
+                            lead.id,
+                            lead.name || `${lead.role || ""} ${lead.organisation || ""}`.trim() || "this lead",
+                          )
+                        }
+                        className="rounded-md border border-rose-400/50 px-2 py-1 text-xs text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
                 ))
               )}
             </div>
@@ -822,7 +916,9 @@ export default function PersonalLeadsPage() {
             <h2 className="[font-family:var(--font-sora)] text-lg font-semibold">Lead detail + CSV import</h2>
             {selectedLead ? (
               <div className="space-y-2 text-sm text-slate-300">
-                <p className="text-white font-semibold">{selectedLead.name || selectedLead.organisation}</p>
+                <p className="text-white font-semibold">
+                  {selectedLead.name || `${selectedLead.role || ""} ${selectedLead.organisation || ""}`.trim() || selectedLead.organisation}
+                </p>
                 <p>{selectedLead.role} · {selectedLead.organisation}</p>
                 <p>{selectedLead.location}</p>
                 <p>{selectedLead.email}</p>

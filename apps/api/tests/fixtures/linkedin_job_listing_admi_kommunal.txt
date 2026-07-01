@@ -1,0 +1,42 @@
+Software Engineer - Fullstack & AI (m/w/d)
+admi Kommunal
+Berlin, Berlin, Germany
+On-site
+Full-time
+
+Determine your fit and how to stand out
+Get AI-powered advice with Premium
+Try Premium for EUR0
+Show match details
+Tailor my resume
+Help me stand out
+See how you compare to over 100 others
+Access exclusive applicant insights
+Promoted by hirer
+Responses managed off LinkedIn
+Apply
+Save
+
+About the job
+We build civic software products and AI-enabled workflows for municipalities.
+
+Deine Aufgaben
+Build AI-powered product features across frontend and backend systems.
+Develop and ship Python/FastAPI services and React/TypeScript interfaces.
+Implement LLM APIs with RAG and context management for production use cases.
+Collaborate with product and design to deliver full-stack product increments.
+
+Dein Profil
+Strong software engineering fundamentals and product feature ownership.
+Experience with Kotlin/JVM and Spring Boot in modern backend systems.
+Hands-on with Hibernate and PostgreSQL.
+Experience deploying services on GCP.
+Knowledge of LangGraph workflows and orchestration.
+Security-first engineering mindset with OWASP awareness.
+German language skills for collaboration with municipal stakeholders.
+
+Warum wir
+You will work on real public-service impact products.
+
+Uber uns
+admi Kommunal modernizes municipal operations with secure AI-enabled software.

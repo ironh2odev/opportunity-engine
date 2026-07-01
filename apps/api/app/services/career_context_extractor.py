@@ -180,6 +180,14 @@ def _normalize_extracted_cv_text(raw_text: str) -> str:
             normalized_lines.append("")
             continue
 
+        # PDF extraction often collapses bullet chains onto one line; split them for cleaner parsing.
+        if "●" in line:
+            parts = [part.strip() for part in re.split(r"\s*[●▪◦•]\s*", line) if part.strip()]
+            if len(parts) > 1:
+                for part in parts:
+                    normalized_lines.append(f"- {part}")
+                continue
+
         bullet_match = re.match(r"^[•▪◦●\-*]\s*(.+)$", line)
         if bullet_match:
             line = f"- {bullet_match.group(1).strip()}"
@@ -683,6 +691,101 @@ def _shorten(text: str, limit: int = 170) -> str:
     return trimmed + "..."
 
 
+def _clean_context_label(raw: str) -> str:
+    label = raw.strip().strip("-•* ").strip()
+    label = re.sub(r"\([^)]*\)", "", label).strip()
+    label = re.sub(r"\s+", " ", label)
+    return label.strip(" :,-")
+
+
+def _is_noise_context_label(label: str) -> bool:
+    if not label:
+        return True
+
+    lowered = label.lower().strip()
+    if re.fullmatch(r"(?:19|20)\d{2}", lowered):
+        return True
+    if re.search(r"\b(?:present|current|ongoing|full-time|part-time|contract)\b", lowered):
+        return True
+    if re.search(r"\b(?:19|20)\d{2}\b", lowered):
+        return True
+
+    tech_tokens = {canonical.lower() for _, canonical in TECH_PATTERN_MAP}
+    if lowered in tech_tokens:
+        return True
+    if lowered in {"docker", "customtkinter", "present", "current"}:
+        return True
+
+    if len(lowered.split()) == 1 and lowered.isdigit():
+        return True
+
+    return False
+
+
+def _is_project_title_line(line: str) -> bool:
+    label = _clean_context_label(line)
+    if _is_noise_context_label(label):
+        return False
+    if any(token in label.lower() for token in ("technical stack", "tech:", "technical proficiency")):
+        return False
+    if len(label.split()) > 14:
+        return False
+
+    lowered = label.lower()
+    if re.search(r"\b(?:built|launched|implemented|developed|designed|delivered|improved|reduced|increased|deployed)\b", lowered):
+        return False
+    if re.search(r"\b\d+%\b|\b\d+\+?\s+(?:teams|users|clients|projects|students|members)\b", lowered):
+        return False
+    if label.endswith("."):
+        return False
+
+    if lowered.startswith("ai-powered "):
+        return True
+
+    title_signals = (
+        "system",
+        "assistant",
+        "platform",
+        "analytics",
+        "engine",
+        "portal",
+        "dashboard",
+    )
+    if any(signal in label.lower() for signal in title_signals):
+        return True
+
+    return label.istitle() and 2 <= len(label.split()) <= 8
+
+
+def _extract_experience_label(line: str) -> str:
+    raw = _clean_context_label(line)
+    if not raw:
+        return ""
+
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    if len(parts) >= 2:
+        for part in reversed(parts):
+            if not _is_noise_context_label(part):
+                return part
+
+    if " - " in raw:
+        left, right = [part.strip() for part in raw.split(" - ", 1)]
+        if not _is_noise_context_label(left):
+            return left
+        if not _is_noise_context_label(right):
+            return right
+
+    return "" if _is_noise_context_label(raw) else raw
+
+
+def _looks_like_experience_heading(line: str) -> bool:
+    lowered = line.lower()
+    return any(
+        marker in lowered
+        for marker in ("engineer", "manager", "intern", "consultant", "developer", "lead", "teacher")
+    ) and "," in line
+
+
 def _synthesize_proof_points(project_lines: list[str], experience_lines: list[str]) -> list[str]:
     action_markers = (
         "built",
@@ -702,10 +805,19 @@ def _synthesize_proof_points(project_lines: list[str], experience_lines: list[st
 
     points: list[str] = []
 
-    def collect(lines: list[str]) -> None:
+    def add_point(context: str, line: str) -> None:
+        base = _shorten(line)
+        if context and not base.lower().startswith(context.lower() + ":"):
+            point = _shorten(f"{context}: {base}")
+        else:
+            point = base
+        if point.lower() not in {item.lower() for item in points}:
+            points.append(point)
+
+    def collect_projects(lines: list[str], max_points: int = 6) -> None:
         context = ""
         for raw in lines:
-            line = raw.strip().lstrip("- ").strip()
+            line = raw.strip().lstrip("-•* ").strip()
             if not line:
                 continue
             if _canonical_section_heading(line.rstrip(":")) is not None:
@@ -715,8 +827,10 @@ def _synthesize_proof_points(project_lines: list[str], experience_lines: list[st
             if any(token in lowered for token in ("tech:", "technical stack", "technical proficiency")):
                 continue
 
-            if len(line.split()) <= 8 and not any(marker in lowered for marker in action_markers):
-                context = line
+            if _is_project_title_line(line):
+                candidate = _clean_context_label(line)
+                if not _is_noise_context_label(candidate):
+                    context = candidate
                 continue
 
             has_action = any(marker in lowered for marker in action_markers)
@@ -724,16 +838,44 @@ def _synthesize_proof_points(project_lines: list[str], experience_lines: list[st
             if not (has_action or has_metric):
                 continue
 
-            point = f"{context}: {line}" if context else line
-            point = _shorten(point)
-            if point.lower() not in {item.lower() for item in points}:
-                points.append(point)
-            if len(points) >= 8:
+            add_point(context, line)
+            if len(points) >= max_points:
                 return
 
-    collect(project_lines)
-    if len(points) < 5:
-        collect(experience_lines)
+    def collect_experience(lines: list[str], max_points: int = 8) -> None:
+        context = ""
+        per_context_count: dict[str, int] = {}
+        for raw in lines:
+            line = raw.strip().lstrip("-•* ").strip()
+            if not line:
+                continue
+            if _canonical_section_heading(line.rstrip(":")) is not None:
+                continue
+
+            if _looks_like_experience_heading(line):
+                candidate = _extract_experience_label(line)
+                if candidate and not _is_noise_context_label(candidate):
+                    context = candidate
+                continue
+
+            lowered = line.lower()
+            has_action = any(marker in lowered for marker in action_markers)
+            has_metric = bool(re.search(r"\b\d+%\b|\b\d+\+?\s+(?:teams|users|clients|projects|students|members)\b", lowered))
+            if not (has_action or has_metric):
+                continue
+
+            key = context.lower() if context else "__unlabeled__"
+            if per_context_count.get(key, 0) >= 1:
+                continue
+
+            add_point(context, line)
+            per_context_count[key] = per_context_count.get(key, 0) + 1
+            if len(points) >= max_points:
+                return
+
+    # Reserve capacity for organization-labeled outcomes from experience.
+    collect_projects(project_lines, max_points=6)
+    collect_experience(experience_lines, max_points=8)
 
     return points[:8]
 

@@ -209,13 +209,27 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
 
         proof_points = suggested["proof_points"]
         self.assertGreaterEqual(len(proof_points), 5)
+        self.assertLessEqual(len(proof_points), 8)
         self.assertEqual(len({item.lower() for item in proof_points}), len(proof_points))
 
         proof_text = " ".join(proof_points).lower()
-        self.assertTrue("kindezi" in proof_text or "mvp platform" in proof_text)
-        self.assertTrue("medical ai assistant" in proof_text or "healthcare assistant" in proof_text)
-        self.assertIn("financial portfolio assistant", proof_text)
-        self.assertTrue("zim cyber city" in proof_text or "flutter" in proof_text or "firebase" in proof_text)
+        self.assertIn("ai-powered football analytics system", proof_text)
+        self.assertIn("ai-powered medical diagnosis & treatment assistant", proof_text)
+        self.assertIn("ai-powered financial portfolio assistant", proof_text)
+        self.assertIn("kindezi world", proof_text)
+        self.assertIn("zim cyber city", proof_text)
+
+        bad_labels = {
+            "customtkinter:",
+            "docker:",
+            "present:",
+            "2024:",
+            "2020:",
+        }
+        for point in proof_points:
+            lowered_point = point.lower()
+            for bad in bad_labels:
+                self.assertNotIn(bad, lowered_point)
 
         stack_lower = {item.lower() for item in suggested["technical_stack"]}
         expected_stack = {
@@ -454,6 +468,143 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         rule_actions_after = self.client.get("/rule-of-100/actions")
         self.assertEqual(rule_actions_after.status_code, 200)
         self.assertEqual(len(rule_actions_after.json()), before_count)
+
+    def test_extract_from_linkedin_job_listing_quality(self) -> None:
+        self.client.put(
+            "/personal/career-context",
+            json={
+                "current_headline": "AI Product & Systems Engineer",
+                "target_roles": ["Software Engineer", "AI Engineer"],
+                "core_skills": ["python", "fastapi", "react", "typescript", "llm api"],
+                "technical_stack": ["rag", "langchain", "docker", "firebase", "flutter", "chart.js"],
+                "project_highlights": ["Built AI feature delivery systems"],
+                "industries": ["GovTech"],
+                "location_preferences": ["Berlin"],
+                "visa_notes": "",
+                "preferred_opportunity_types": ["job"],
+                "positioning_statement": "",
+                "proof_points": ["Shipped production AI-assisted workflows"],
+                "raw_cv_text": "Built Python/FastAPI and React/TypeScript systems with LLM integrations.",
+            },
+        )
+
+        response = self.client.post(
+            "/personal/leads/extract-from-text",
+            json={
+                "raw_text": _read_fixture("linkedin_job_listing_admi_kommunal.txt"),
+                "source_type": "job_listing",
+                "optional_source_url": "https://www.linkedin.com/jobs/view/123456",
+                "user_goal": "job",
+                "use_career_context": True,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        lead = body["suggested_lead"]
+
+        self.assertEqual(lead["organisation"], "admi Kommunal")
+        self.assertEqual(lead["role"], "Software Engineer - Fullstack & AI (m/w/d)")
+        self.assertIn("Berlin", lead["location"])
+        self.assertIn("Germany", lead["location"])
+        self.assertEqual(lead["opportunity_type"], "job")
+        self.assertEqual(lead["source"], "capture:job_listing")
+        self.assertEqual(lead["name"], "")
+
+        combined = " ".join([lead["name"], lead["role"], lead["organisation"]]).lower()
+        self.assertNotIn("premium", combined)
+        self.assertNotIn("try premium", combined)
+
+        missing_fields = set(body["missing_fields"])
+        self.assertNotIn("name", missing_fields)
+
+        matched = {item.lower() for item in body["matched_skills"]}
+        self.assertIn("python", matched)
+        self.assertIn("fastapi", matched)
+        self.assertTrue("react" in matched or "typescript" in matched)
+        self.assertIn("llm apis", matched)
+
+        gaps = {item.lower() for item in body["missing_skills_or_gaps"]}
+        self.assertTrue("kotlin/jvm" in gaps or "spring boot" in gaps)
+        self.assertTrue("postgresql" in gaps or "gcp" in gaps)
+        self.assertIn("langgraph", gaps)
+
+    def test_duplicate_lead_creation_is_blocked_for_same_source_org_role(self) -> None:
+        payload = {
+            "name": "",
+            "role": "Software Engineer - Fullstack & AI (m/w/d)",
+            "organisation": "admi Kommunal",
+            "organisation_website": "",
+            "linkedin_url": "https://www.linkedin.com/jobs/view/123456",
+            "email": "",
+            "location": "Berlin, Germany",
+            "source": "capture:job_listing",
+            "opportunity_type": "job",
+            "relationship_strength": "cold",
+            "status": "new",
+            "fit_score": 7,
+            "priority": "medium",
+            "problem_observed": "",
+            "why_relevant": "",
+            "suggested_angle": "",
+            "notes": "",
+            "tags": ["python"],
+            "next_action": "review and tailor application",
+            "follow_up_date": None,
+        }
+
+        first = self.client.post("/personal/leads", json=payload)
+        self.assertEqual(first.status_code, 200)
+
+        second = self.client.post("/personal/leads", json=payload)
+        self.assertEqual(second.status_code, 400)
+        self.assertIn("Existing lead found", second.json()["detail"])
+
+    def test_deleting_one_lead_only_removes_that_lead(self) -> None:
+        first = self.client.post(
+            "/personal/leads",
+            json={
+                "name": "",
+                "role": "Role A",
+                "organisation": "Org A",
+                "source": "manual",
+                "opportunity_type": "job",
+                "relationship_strength": "cold",
+                "status": "new",
+                "fit_score": 5,
+                "priority": "medium",
+                "next_action": "review",
+            },
+        )
+        second = self.client.post(
+            "/personal/leads",
+            json={
+                "name": "",
+                "role": "Role B",
+                "organisation": "Org B",
+                "source": "manual",
+                "opportunity_type": "job",
+                "relationship_strength": "cold",
+                "status": "new",
+                "fit_score": 5,
+                "priority": "medium",
+                "next_action": "review",
+            },
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+
+        first_id = first.json()["id"]
+        second_id = second.json()["id"]
+
+        delete_response = self.client.delete(f"/personal/leads/{first_id}")
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertTrue(delete_response.json()["deleted"])
+
+        list_response = self.client.get("/personal/leads")
+        self.assertEqual(list_response.status_code, 200)
+        ids = {item["id"] for item in list_response.json()}
+        self.assertNotIn(first_id, ids)
+        self.assertIn(second_id, ids)
 
 
 if __name__ == "__main__":
