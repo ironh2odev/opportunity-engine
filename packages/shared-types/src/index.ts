@@ -230,6 +230,7 @@ export interface CareerContextInput {
 }
 
 export interface CareerContextExtractionResult {
+  extractedFullName: string;
   suggestedCareerContext: CareerContextInput;
   extractionConfidence: ConfidenceLabel;
   missingFields: string[];

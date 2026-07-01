@@ -10,6 +10,38 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
+REPRESENTATIVE_CV_TEXT = """Alex Rivera
+Senior Full Stack Engineer
+alex.rivera@example.com | linkedin.com/in/alexrivera
+
+Profile Summary
+Full stack engineer focused on product-grade AI-enabled workflow platforms. I build reliable backend and frontend systems and ship measurable outcomes.
+
+Projects
+- Opportunity Engine Platform
+    Built FastAPI services and Next.js interfaces for lead capture, approvals, and review-first workflows.
+    Tech: Python, FastAPI, Next.js, TypeScript, Docker, PostgreSQL
+    Reduced manual triage time by 42% and improved review throughput by 30%.
+
+Experience
+- Senior Engineer, Nimbus Labs
+    Launched automation features used by 120+ teams.
+    Deployed containerized services with Docker and CI workflows.
+
+Technical Proficiency
+Python, FastAPI, Next.js, TypeScript, Docker, PostgreSQL
+
+Job Related Abilities
+Leadership, stakeholder management, communication, mentoring, problem solving
+
+Languages
+English, Spanish
+
+Education
+BSc Computer Science
+"""
+
+
 class PersonalLeadsApiTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -167,8 +199,34 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertIn("suggested_career_context", body)
+        self.assertIn("extracted_full_name", body)
         self.assertIn("core_skills", body["suggested_career_context"])
         self.assertIn("reasoning_summary", body)
+
+    def test_career_context_extract_quality_on_representative_cv(self) -> None:
+        response = self.client.post(
+            "/personal/career-context/extract",
+            data={
+                "raw_cv_text": REPRESENTATIVE_CV_TEXT,
+                "extraction_mode": "local",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        suggested = body["suggested_career_context"]
+
+        self.assertEqual(body["extracted_full_name"], "Alex Rivera")
+        self.assertEqual(suggested["current_headline"], "Senior Full Stack Engineer")
+        self.assertGreater(len(suggested["target_roles"]), 0)
+        self.assertGreater(len(suggested["proof_points"]), 0)
+
+        stack_lower = {item.lower() for item in suggested["technical_stack"]}
+        for expected in {"fastapi", "next.js", "python", "typescript", "docker"}:
+            self.assertIn(expected, stack_lower)
+
+        persisted_state = self.client.get("/personal/career-context")
+        self.assertEqual(persisted_state.status_code, 200)
+        self.assertEqual(persisted_state.json()["current_headline"], "")
 
     def test_career_context_extract_rejects_empty_text(self) -> None:
         response = self.client.post(

@@ -374,6 +374,7 @@ class CareerContextExtractionRequest(BaseModel):
 
 
 class CareerContextExtractionResponse(BaseModel):
+    extracted_full_name: str = ""
     suggested_career_context: CareerContextUpdateRequest
     extraction_confidence: ConfidenceLabel
     missing_fields: list[str] = Field(default_factory=list)

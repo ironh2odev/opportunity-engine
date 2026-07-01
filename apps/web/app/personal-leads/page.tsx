@@ -518,6 +518,7 @@ export default function PersonalLeadsPage() {
 
               {careerExtractionResult ? (
                 <div className="mt-3 space-y-2 rounded-lg border border-white/10 bg-white/5 p-3 text-xs text-slate-200">
+                  <p>Extracted name: {careerExtractionResult.extractedFullName || "unknown"}</p>
                   <p>Confidence: {careerExtractionResult.extractionConfidence}</p>
                   <p>Mode used: {careerExtractionResult.extractionModeUsed}</p>
                   <p>AI used: {careerExtractionResult.aiUsed ? "yes" : "no"}</p>
