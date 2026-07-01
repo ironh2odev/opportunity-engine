@@ -502,10 +502,12 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         body = response.json()
         lead = body["suggested_lead"]
 
-        self.assertEqual(lead["organisation"], "admi Kommunal")
+        self.assertIn(lead["organisation"], {"admi Kommunal", "admi Kommunal GmbH"})
+        self.assertNotEqual(lead["organisation"].lower(), "about the job")
         self.assertEqual(lead["role"], "Software Engineer - Fullstack & AI (m/w/d)")
         self.assertIn("Berlin", lead["location"])
         self.assertIn("Germany", lead["location"])
+        self.assertNotEqual(lead["location"].strip().lower(), "remote")
         self.assertEqual(lead["opportunity_type"], "job")
         self.assertEqual(lead["source"], "capture:job_listing")
         self.assertEqual(lead["name"], "")
@@ -527,6 +529,48 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         self.assertTrue("kotlin/jvm" in gaps or "spring boot" in gaps)
         self.assertTrue("postgresql" in gaps or "gcp" in gaps)
         self.assertIn("langgraph", gaps)
+
+    def test_create_rule_action_for_job_lead_uses_application_tailoring(self) -> None:
+        create_response = self.client.post(
+            "/personal/leads",
+            json={
+                "name": "",
+                "role": "Software Engineer - Fullstack & AI (m/w/d)",
+                "organisation": "admi Kommunal",
+                "source": "capture:job_listing",
+                "opportunity_type": "job",
+                "relationship_strength": "cold",
+                "status": "new",
+                "fit_score": 7,
+                "priority": "medium",
+                "problem_observed": "Needs Kotlin/Spring ramp-up framing",
+                "why_relevant": "Strong Python/FastAPI and React/TypeScript overlap with role requirements",
+                "suggested_angle": "Emphasize AI/full-stack product implementation",
+                "notes": "Job metadata: work mode: on-site, employment: full-time",
+                "tags": ["python", "fastapi", "react", "typescript", "llm apis"],
+                "next_action": "review and tailor application",
+            },
+        )
+        self.assertEqual(create_response.status_code, 200)
+        lead_id = create_response.json()["id"]
+
+        action_response = self.client.post(f"/personal/leads/{lead_id}/create-rule-action")
+        self.assertEqual(action_response.status_code, 200)
+        action = action_response.json()
+
+        self.assertEqual(action["channel"], "job_application")
+        self.assertIn("application", action["action_type"].lower())
+        self.assertIn("tailor application", action["suggested_action"].lower())
+        self.assertIn("software engineer - fullstack & ai", action["suggested_action"].lower())
+        self.assertIn("admi kommunal", action["suggested_action"].lower())
+
+        message = action["suggested_message"]
+        self.assertFalse(message.lower().startswith("hi,"))
+        self.assertIn("review the requirements", message.lower())
+        self.assertIn("python/fastapi", message.lower())
+        self.assertIn("react/typescript", message.lower())
+        self.assertIn("llm/rag", message.lower())
+        self.assertIn("kotlin/spring", message.lower())
 
     def test_duplicate_lead_creation_is_blocked_for_same_source_org_role(self) -> None:
         payload = {

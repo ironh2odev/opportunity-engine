@@ -60,6 +60,32 @@ const captureSourceTypes: CaptureSourceType[] = [
   "other",
 ];
 
+const forbiddenLeadHeadingTokens = new Set([
+  "about the job",
+  "deine aufgaben",
+  "dein profil",
+  "warum wir",
+  "uber uns",
+  "über uns",
+]);
+
+function cleanLeadHeading(value: string): string {
+  const normalized = value.trim();
+  if (!normalized) return "";
+  return forbiddenLeadHeadingTokens.has(normalized.toLowerCase()) ? "" : normalized;
+}
+
+function leadDisplayTitle(lead: PersonalLead): string {
+  const role = cleanLeadHeading(lead.role);
+  const organisation = cleanLeadHeading(lead.organisation);
+  const name = cleanLeadHeading(lead.name);
+  if (role && organisation) return `${role} · ${organisation}`;
+  if (name) return name;
+  if (role) return role;
+  if (organisation) return organisation;
+  return "Unnamed lead";
+}
+
 const emptyLeadInput: PersonalLeadInput = {
   name: "",
   role: "",
@@ -274,8 +300,8 @@ export default function PersonalLeadsPage() {
     }
   }
 
-  async function handleDeleteLeadById(leadId: string, label: string) {
-    const confirmed = window.confirm(`Delete ${label}? This cannot be undone.`);
+  async function handleDeleteLeadById(leadId: string) {
+    const confirmed = window.confirm("Delete this lead? This cannot be undone.");
     if (!confirmed) return;
 
     setSaving(true);
@@ -848,19 +874,16 @@ export default function PersonalLeadsPage() {
                         className="flex-1 text-left"
                       >
                         <p className="font-semibold text-white">
-                          {lead.name || `${lead.role || ""} ${lead.organisation || ""}`.trim() || lead.organisation || "Unnamed lead"}
+                          {leadDisplayTitle(lead)}
                         </p>
-                        <p className="text-xs text-slate-300">{lead.role} · {lead.organisation}</p>
+                        <p className="text-xs text-slate-300">{cleanLeadHeading(lead.role) || "-"} · {cleanLeadHeading(lead.organisation) || "-"}</p>
                         <p className="text-xs text-slate-400">{lead.opportunityType} · {lead.status} · {lead.priority}</p>
                       </button>
                       <button
                         type="button"
                         disabled={saving}
                         onClick={() =>
-                          void handleDeleteLeadById(
-                            lead.id,
-                            lead.name || `${lead.role || ""} ${lead.organisation || ""}`.trim() || "this lead",
-                          )
+                          void handleDeleteLeadById(lead.id)
                         }
                         className="rounded-md border border-rose-400/50 px-2 py-1 text-xs text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
                       >
@@ -917,7 +940,7 @@ export default function PersonalLeadsPage() {
             {selectedLead ? (
               <div className="space-y-2 text-sm text-slate-300">
                 <p className="text-white font-semibold">
-                  {selectedLead.name || `${selectedLead.role || ""} ${selectedLead.organisation || ""}`.trim() || selectedLead.organisation}
+                  {leadDisplayTitle(selectedLead)}
                 </p>
                 <p>{selectedLead.role} · {selectedLead.organisation}</p>
                 <p>{selectedLead.location}</p>

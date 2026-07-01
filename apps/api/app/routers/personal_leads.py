@@ -49,6 +49,27 @@ def _to_channel_from_next_action(next_action: str) -> ActionChannel:
 
 
 def _to_rule_action(lead: PersonalLead) -> PersonalRuleAction:
+    if lead.opportunity_type == "job":
+        role = lead.role.strip() or "role"
+        organisation = lead.organisation.strip() or "target organisation"
+        return personal_store.create_rule_action(
+            source_lead_id=lead.id,
+            channel=ActionChannel.job_application,
+            action_type="Job application tailoring draft action",
+            suggested_action=f"Tailor application for {role} at {organisation}",
+            suggested_message=(
+                f"Review the requirements for {role} at {organisation} and draft a tailored application summary. "
+                "Emphasize AI/full-stack product implementation, Python/FastAPI + React/TypeScript delivery, "
+                "and LLM/RAG product systems. Include one deployed project proof, and honestly frame "
+                "Kotlin/Spring Boot as a ramp-up area with a concrete learning plan."
+            ),
+            rationale=lead.why_relevant or "Job opportunity should be reviewed and tailored before any manual apply step.",
+            proof_to_reference=lead.problem_observed or "Reference one relevant shipped outcome in the tailored application.",
+            status=DailyActionStatus.suggested,
+            approval_required=True,
+            follow_up_date=lead.follow_up_date,
+        )
+
     channel = _to_channel_from_next_action(lead.next_action)
     outbound_capable = channel in OUTBOUND_CHANNELS
     return personal_store.create_rule_action(

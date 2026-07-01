@@ -75,6 +75,26 @@ JOB_SECTION_HINTS = {
     "dein profil",
     "warum wir",
     "uber uns",
+    "über uns",
+}
+
+FORBIDDEN_JOB_HEADER_CANDIDATES = {
+    "about the job",
+    "deine aufgaben",
+    "dein profil",
+    "warum wir",
+    "uber uns",
+    "über uns",
+    "apply",
+    "save",
+    "premium",
+    "try premium",
+    "determine your fit",
+    "show match details",
+    "tailor my resume",
+    "help me stand out",
+    "responses managed off linkedin",
+    "promoted by hirer",
 }
 
 WORK_MODE_TERMS = {
@@ -139,6 +159,13 @@ def _is_linkedin_boilerplate_line(line: str) -> bool:
     return any(snippet in lowered for snippet in LINKEDIN_BOILERPLATE_SNIPPETS)
 
 
+def _is_forbidden_job_candidate(line: str) -> bool:
+    lowered = line.lower().strip()
+    if lowered in FORBIDDEN_JOB_HEADER_CANDIDATES:
+        return True
+    return any(snippet in lowered for snippet in LINKEDIN_BOILERPLATE_SNIPPETS)
+
+
 def _dedupe_lines(lines: list[str]) -> list[str]:
     seen: set[str] = set()
     deduped: list[str] = []
@@ -196,7 +223,7 @@ def _looks_like_title(line: str) -> bool:
         return False
     if len(line) < 8 or len(line) > 140:
         return False
-    if lowered in JOB_SECTION_HINTS:
+    if lowered in JOB_SECTION_HINTS or _is_forbidden_job_candidate(line):
         return False
     return any(keyword in lowered for keyword in JOB_ROLE_KEYWORDS) or "(m/w/d)" in lowered
 
@@ -214,9 +241,30 @@ def _is_metadata_line(line: str) -> bool:
     return any(token in lowered for token in metadata_tokens)
 
 
+def _clean_org_candidate(value: str) -> str:
+    cleaned = _line_normalize(value)
+    cleaned = re.sub(r"^company logo for,?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^(company|organisation|organization)[:\-]\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+[–-]\s+.*$", "", cleaned)
+    return _line_normalize(cleaned)
+
+
+def _looks_like_company_line(line: str) -> bool:
+    lowered = line.lower()
+    if _is_forbidden_job_candidate(line):
+        return False
+    if _is_metadata_line(line) or _looks_like_title(line):
+        return False
+    if any(term in lowered for term in WORK_MODE_TERMS) or any(term in lowered for term in EMPLOYMENT_TERMS):
+        return False
+    if any(marker in lowered for marker in ("location:", "work type:", "employment:")):
+        return False
+    return bool(re.search(r"[A-Za-z]", line)) and len(line) <= 100
+
+
 def _extract_job_header(processed_text: str) -> dict[str, str]:
     lines = [_line_normalize(line) for line in processed_text.splitlines() if _line_normalize(line)]
-    top = lines[:20]
+    top = lines[:30]
     role = ""
     organisation = ""
     location = ""
@@ -224,60 +272,85 @@ def _extract_job_header(processed_text: str) -> dict[str, str]:
     employment_type = ""
     role_index = -1
 
-    for idx, line in enumerate(top):
+    header_lines: list[str] = []
+    for line in top:
+        if line.lower() in JOB_SECTION_HINTS:
+            break
+        header_lines.append(line)
+    if not header_lines:
+        header_lines = top
+
+    for idx, line in enumerate(header_lines):
         match = re.search(r"(?:role|position|title)[:\-]\s*(.+)", line, flags=re.IGNORECASE)
         if match:
-            role = _line_normalize(match.group(1))
-            role_index = idx
-            break
+            candidate = _line_normalize(match.group(1))
+            if not _is_forbidden_job_candidate(candidate):
+                role = candidate
+                role_index = idx
+                break
     if not role:
-        for idx, line in enumerate(top):
-            if _looks_like_title(line):
+        for idx, line in enumerate(header_lines):
+            if _looks_like_title(line) and not _is_forbidden_job_candidate(line):
                 role = line
                 role_index = idx
                 break
 
-    for line in top:
+    for line in header_lines:
         match = re.search(r"(?:company|organisation|organization)[:\-]\s*(.+)", line, flags=re.IGNORECASE)
         if match:
-            organisation = _line_normalize(match.group(1))
-            break
+            candidate = _clean_org_candidate(match.group(1))
+            if candidate and not _is_forbidden_job_candidate(candidate):
+                organisation = candidate
+                break
+    if not organisation:
+        for line in header_lines:
+            logo_match = re.search(r"company logo for,?\s*(.+)", line, flags=re.IGNORECASE)
+            if logo_match:
+                candidate = _clean_org_candidate(logo_match.group(1))
+                if candidate and not _is_forbidden_job_candidate(candidate):
+                    organisation = candidate
+                    break
+
     if not organisation and role_index >= 0:
-        for line in top[role_index + 1 : role_index + 5]:
-            lowered = line.lower()
-            if _is_metadata_line(line) or _looks_like_title(line):
+        start = max(0, role_index - 3)
+        end = min(len(header_lines), role_index + 4)
+        for idx in range(start, end):
+            if idx == role_index:
                 continue
-            if any(term in lowered for term in WORK_MODE_TERMS) or any(term in lowered for term in EMPLOYMENT_TERMS):
+            line = header_lines[idx]
+            if not _looks_like_company_line(line):
                 continue
-            if len(line) <= 90:
-                organisation = line
+            candidate = _clean_org_candidate(line)
+            if candidate and not _is_forbidden_job_candidate(candidate):
+                organisation = candidate
                 break
 
-    for line in top:
+    for line in header_lines:
         location_match = re.search(r"(?:location|ort)[:\-]\s*(.+)", line, flags=re.IGNORECASE)
         if location_match:
-            location = _normalize_location(location_match.group(1))
-            break
+            candidate = _normalize_location(location_match.group(1))
+            if candidate:
+                location = candidate
+                break
         if "," in line and any(country in line.lower() for country in ("germany", "united", "usa", "uk")):
-            location = _normalize_location(line)
-            break
+            candidate = _normalize_location(line)
+            if candidate:
+                location = candidate
+                break
 
-    for line in top:
+    for line in header_lines:
         lowered = line.lower()
         for token, canonical in WORK_MODE_TERMS.items():
-            if token in lowered:
+            if token in lowered and not work_mode:
                 work_mode = canonical
                 break
         for token, canonical in EMPLOYMENT_TERMS.items():
-            if token in lowered:
+            if token in lowered and not employment_type:
                 employment_type = canonical
                 break
 
-    for bad in ("premium", "try premium", "apply", "save"):
-        if bad in organisation.lower():
-            organisation = ""
-        if bad in role.lower():
-            role = ""
+    role = "" if _is_forbidden_job_candidate(role) else role
+    organisation = "" if _is_forbidden_job_candidate(organisation) else organisation
 
     return {
         "role": role,
@@ -315,7 +388,6 @@ def _extract_role(text: str) -> str:
 def _extract_location(text: str) -> str:
     patterns = [
         r"(?:location|based in)[:\-]?\s*([^\n,]+)",
-        r"\b(remote|hybrid|onsite)\b",
     ]
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)
@@ -486,8 +558,12 @@ def _to_suggestion(
         job_meta.append(f"employment: {header['employment_type']}")
 
     notes = processed_text.strip()[:600]
+    tags = extracted_skills[:6]
     if job_meta:
         notes = f"{notes}\n\nJob metadata: {', '.join(job_meta)}".strip()
+        tags = [*tags, *job_meta]
+    if payload.source_type == CaptureSourceType.job_listing.value:
+        tags = [*tags, "linkedin"]
 
     why_relevant = "Potential fit based on extracted context and selected goal."
     if payload.source_type == CaptureSourceType.job_listing.value and (role or organisation):
@@ -512,7 +588,7 @@ def _to_suggestion(
         why_relevant=why_relevant,
         suggested_angle=_suggested_positioning(career_context, extracted_skills, payload.source_type, gaps),
         notes=notes,
-        tags=extracted_skills[:6],
+        tags=list(dict.fromkeys(tags))[:8],
         next_action=next_action,
         follow_up_date=None,
         fit_score=fit_score,
