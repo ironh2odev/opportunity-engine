@@ -12,6 +12,10 @@ Systems
 
 Engineer
 
+📍 Berlin, Germany
+
+📞 176 000 000
+
 danaishe@example.test
 linkedin.com/in/sanitized-profile
 
@@ -20,13 +24,20 @@ Product-minded engineer focused on AI-enabled systems and measurable execution q
 I build backend and frontend platforms that improve decision speed and operational reliability.
 
 PROJECTS
-- Opportunity Engine Platform
+- Kindezi MVP Platform
   Built FastAPI services and Next.js interfaces for capture, approvals, and review-first workflows.
-  Technical stack: Python · FastAPI · Next.js · React · TypeScript · Docker
+  Technical stack: Python · FastAPI · Next.js · React · TypeScript · Docker · Tailwind CSS · Render · Vercel · Railway · GitHub
   Reduced manual triage time by 42% and improved review throughput by 30%.
-- Workflow Reliability Program
-  Deployed Dockerized services and added rollback-safe release flows.
-  Improved deployment reliability and reduced critical incidents by 25%.
+- Medical AI Assistant
+  Developed healthcare assistant workflows with LangChain and GPT-4 API for clinical triage guidance.
+  Implemented TensorFlow, OpenCV, scikit-learn, pandas, and NumPy pipelines for model and data preprocessing.
+  Improved response quality and reduced clinician preparation time by 27%.
+- Financial Portfolio Assistant
+  Designed portfolio analysis assistant with Python analytics and Chart.js reporting dashboards.
+  Increased insight turnaround and improved decision support accuracy by 24%.
+- Zim Cyber City Digital Platform
+  Built mobile-facing features with Flutter and Firebase for service delivery workflows.
+  Delivered MVP capabilities for citizen onboarding and digital platform operations.
 
 EXPERIENCE
 - Senior Systems Engineer, Example Labs
@@ -35,12 +46,15 @@ EXPERIENCE
 - Product Systems Engineer, Sample Works
   Built analytics and intake services for cross-functional operations.
   Increased process visibility and reduced handoff delays by 28%.
+- Teaching and Programming Experience
+  Taught programming fundamentals and mentored student builders through practical project delivery.
+  Completed curriculum-aligned software labs and assessment workflows.
 
 EDUCATION
 BSc Computer Science
 
 Technical Proficiency
-Python · FastAPI · Next.js · React · TypeScript · Docker · PostgreSQL
+Python · FastAPI · Next.js · React · TypeScript · Docker · PostgreSQL · TensorFlow · OpenCV · scikit-learn · LangChain · GPT-4 API · Tailwind CSS · Flutter · Firebase · pandas · NumPy · Chart.js · Render · Vercel · Railway · GitHub
 
 Job Related Abilities
 Leadership · stakeholder management · communication · mentoring · problem solving

@@ -61,13 +61,22 @@ COMMON_TECH_STACK = {
 INDUSTRY_KEYWORDS = {
     "saas": "SaaS",
     "fintech": "Fintech",
+    "finance": "Finance",
     "health": "Healthcare",
     "healthcare": "Healthcare",
+    "medical": "Healthcare",
     "edtech": "EdTech",
+    "education": "Education",
     "ecommerce": "Ecommerce",
     "b2b": "B2B",
     "marketplace": "Marketplace",
     "ai": "AI",
+    "automation": "Automation",
+    "analytics": "Analytics",
+    "sports": "Sports Intelligence",
+    "sports intelligence": "Sports Intelligence",
+    "digital platform": "Digital Platforms",
+    "digital platforms": "Digital Platforms",
 }
 
 SECTION_ALIASES: dict[str, tuple[str, ...]] = {
@@ -109,6 +118,9 @@ TECH_PATTERN_MAP: tuple[tuple[str, str], ...] = (
     (r"\btypescript\b", "TypeScript"),
     (r"\bjavascript\b", "JavaScript"),
     (r"\breact\b", "React"),
+    (r"\btailwind(?:\s*css)?\b", "Tailwind CSS"),
+    (r"\bflutter\b", "Flutter"),
+    (r"\bfirebase\b", "Firebase"),
     (r"\bdocker\b", "Docker"),
     (r"\bkubernetes\b", "Kubernetes"),
     (r"\bpostgres(?:ql)?\b", "PostgreSQL"),
@@ -120,6 +132,18 @@ TECH_PATTERN_MAP: tuple[tuple[str, str], ...] = (
     (r"\bredis\b", "Redis"),
     (r"\bnode\.?js\b", "Node.js"),
     (r"\bllm\b", "LLM"),
+    (r"\blangchain\b", "LangChain"),
+    (r"\bgpt\s*[- ]?4(?:\s*api)?\b", "GPT-4 API"),
+    (r"\btensorflow\b", "TensorFlow"),
+    (r"\bopencv\b", "OpenCV"),
+    (r"\bscikit[- ]?learn\b|\bsklearn\b", "scikit-learn"),
+    (r"\bpandas\b", "pandas"),
+    (r"\bnumpy\b", "NumPy"),
+    (r"\bchart\.?js\b", "Chart.js"),
+    (r"\brender\b", "Render"),
+    (r"\bvercel\b", "Vercel"),
+    (r"\brailway\b", "Railway"),
+    (r"\bgithub\b", "GitHub"),
 )
 
 SOFT_SKILL_KEYWORDS: tuple[str, ...] = (
@@ -325,6 +349,18 @@ def _looks_like_contact_line(line: str) -> bool:
     )
 
 
+def _clean_headline(line: str) -> str:
+    if not line:
+        return ""
+    cleaned = line
+    cleaned = re.sub(r"[\u2600-\u27BF\U0001F300-\U0001FAFF]", " ", cleaned)
+    cleaned = re.sub(r"\s*[|,]??\s*(?:email|github|linkedin|portfolio|phone|tel)\b.*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*[|,]??\s*(?:berlin|germany|nationality|remote|\+\d[\d\s-]*)\b.*$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*[|,]??\s*[📍📞✉️☎️].*$", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -|,")
+    return cleaned
+
+
 def _extract_full_name(header_lines: list[str]) -> str:
     pattern = re.compile(r"^[A-Z][A-Za-z'`.-]+(?:\s+[A-Z][A-Za-z'`.-]+){1,3}$")
     for line in header_lines[:5]:
@@ -345,12 +381,34 @@ def _extract_full_name(header_lines: list[str]) -> str:
 
 
 def _extract_headline(header_lines: list[str], full_name: str) -> str:
+    title_keywords = (
+        "engineer",
+        "developer",
+        "architect",
+        "manager",
+        "consultant",
+        "product",
+        "systems",
+        "ai",
+        "ml",
+    )
+
+    candidates: list[str] = []
     for line in header_lines[:8]:
         line = line.strip()
         if not line or line == full_name or _looks_like_contact_line(line):
             continue
-        if 3 <= len(line.split()) <= 14 and len(line) <= 120:
-            return line
+        if 3 <= len(line.split()) <= 18 and len(line) <= 160:
+            cleaned = _clean_headline(line)
+            if cleaned:
+                candidates.append(cleaned)
+
+    for candidate in candidates:
+        lowered = candidate.lower()
+        if any(keyword in lowered for keyword in title_keywords):
+            return candidate
+    if candidates:
+        return candidates[0]
 
     tokens: list[str] = []
     for line in header_lines[:10]:
@@ -358,7 +416,7 @@ def _extract_headline(header_lines: list[str], full_name: str) -> str:
             continue
         tokens.extend(line.split())
     if tokens:
-        headline = " ".join(tokens[:10]).strip()
+        headline = _clean_headline(" ".join(tokens[:10]).strip())
         if len(headline.split()) >= 3:
             return headline
     return ""
@@ -617,6 +675,69 @@ def _extract_bullet_proof_points(lines: list[str]) -> list[str]:
     return points
 
 
+def _shorten(text: str, limit: int = 170) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    trimmed = compact[: limit - 3].rstrip()
+    return trimmed + "..."
+
+
+def _synthesize_proof_points(project_lines: list[str], experience_lines: list[str]) -> list[str]:
+    action_markers = (
+        "built",
+        "launched",
+        "implemented",
+        "deployed",
+        "delivered",
+        "owned",
+        "designed",
+        "developed",
+        "completed",
+        "taught",
+        "reduced",
+        "improved",
+        "increased",
+    )
+
+    points: list[str] = []
+
+    def collect(lines: list[str]) -> None:
+        context = ""
+        for raw in lines:
+            line = raw.strip().lstrip("- ").strip()
+            if not line:
+                continue
+            if _canonical_section_heading(line.rstrip(":")) is not None:
+                continue
+
+            lowered = line.lower()
+            if any(token in lowered for token in ("tech:", "technical stack", "technical proficiency")):
+                continue
+
+            if len(line.split()) <= 8 and not any(marker in lowered for marker in action_markers):
+                context = line
+                continue
+
+            has_action = any(marker in lowered for marker in action_markers)
+            has_metric = bool(re.search(r"\b\d+%\b|\b\d+\+?\s+(?:teams|users|clients|projects|students|members)\b", lowered))
+            if not (has_action or has_metric):
+                continue
+
+            point = f"{context}: {line}" if context else line
+            point = _shorten(point)
+            if point.lower() not in {item.lower() for item in points}:
+                points.append(point)
+            if len(points) >= 8:
+                return
+
+    collect(project_lines)
+    if len(points) < 5:
+        collect(experience_lines)
+
+    return points[:8]
+
+
 def _missing_fields(context: CareerContextUpdateRequest) -> list[str]:
     missing: list[str] = []
     if not context.current_headline:
@@ -685,15 +806,18 @@ def _local_extract(raw_cv_text: str, mode: CareerContextExtractionMode) -> Caree
 
     highlight_lines = sections.get("projects", []) + sections.get("experience", [])
     project_highlights = _extract_project_highlights(highlight_lines)
-    proof_points = _extract_proof_points(project_highlights)
-    if not proof_points:
-        proof_points = _extract_proof_points(lines)
-    bullet_points = _extract_bullet_proof_points(highlight_lines)
-    combined_proofs = []
-    for item in proof_points + bullet_points:
-        if item.lower() not in {existing.lower() for existing in combined_proofs}:
-            combined_proofs.append(item)
-    proof_points = combined_proofs[:6]
+    proof_points = _synthesize_proof_points(
+        sections.get("projects", []),
+        sections.get("experience", []),
+    )
+    if len(proof_points) < 5:
+        fallback_points = _extract_proof_points(project_highlights) + _extract_bullet_proof_points(highlight_lines)
+        merged: list[str] = []
+        for item in proof_points + fallback_points:
+            compact = _shorten(item)
+            if compact.lower() not in {existing.lower() for existing in merged}:
+                merged.append(compact)
+        proof_points = merged[:8]
 
     combined_for_location = "\n".join(header_lines + sections.get("profile_summary", []))
 

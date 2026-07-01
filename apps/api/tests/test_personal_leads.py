@@ -194,6 +194,11 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         self.assertEqual(body["extracted_full_name"], "Danaishe Mamvura")
         self.assertIn("AI Product", suggested["current_headline"])
         self.assertIn("Systems Engineer", suggested["current_headline"])
+        lowered_headline = suggested["current_headline"].lower()
+        self.assertNotIn("berlin", lowered_headline)
+        self.assertNotIn("germany", lowered_headline)
+        self.assertNotIn("@", lowered_headline)
+        self.assertNotIn("176", lowered_headline)
         self.assertGreater(len(suggested["target_roles"]), 0)
         self.assertTrue(
             any(
@@ -203,10 +208,40 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
         )
 
         proof_points = suggested["proof_points"]
-        self.assertGreaterEqual(len(proof_points), 4)
+        self.assertGreaterEqual(len(proof_points), 5)
         self.assertEqual(len({item.lower() for item in proof_points}), len(proof_points))
 
+        proof_text = " ".join(proof_points).lower()
+        self.assertTrue("kindezi" in proof_text or "mvp platform" in proof_text)
+        self.assertTrue("medical ai assistant" in proof_text or "healthcare assistant" in proof_text)
+        self.assertIn("financial portfolio assistant", proof_text)
+        self.assertTrue("zim cyber city" in proof_text or "flutter" in proof_text or "firebase" in proof_text)
+
         stack_lower = {item.lower() for item in suggested["technical_stack"]}
+        expected_stack = {
+            "python",
+            "fastapi",
+            "next.js",
+            "react",
+            "typescript",
+            "docker",
+            "tensorflow",
+            "opencv",
+            "scikit-learn",
+            "langchain",
+            "gpt-4 api",
+            "tailwind css",
+            "flutter",
+            "firebase",
+            "pandas",
+            "numpy",
+            "chart.js",
+            "render",
+            "vercel",
+            "railway",
+            "github",
+        }
+        self.assertGreaterEqual(len(stack_lower.intersection(expected_stack)), 12)
         for expected in {"fastapi", "next.js", "python", "typescript", "docker", "react"}:
             self.assertIn(expected, stack_lower)
 
