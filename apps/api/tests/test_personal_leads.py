@@ -477,7 +477,12 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
                 "target_roles": ["Software Engineer", "AI Engineer"],
                 "core_skills": ["python", "fastapi", "react", "typescript", "llm api"],
                 "technical_stack": ["rag", "langchain", "docker", "firebase", "flutter", "chart.js"],
-                "project_highlights": ["Built AI feature delivery systems"],
+                "project_highlights": [
+                    "Built full-stack platforms",
+                    "Delivered MVPs",
+                    "Owned product engineering work",
+                    "Shipped product features end to end",
+                ],
                 "industries": ["GovTech"],
                 "location_preferences": ["Berlin"],
                 "visa_notes": "",
@@ -518,17 +523,25 @@ Jordan Vale,Founder,Cobalt Ridge,https://cobalt.example,https://linkedin.example
 
         missing_fields = set(body["missing_fields"])
         self.assertNotIn("name", missing_fields)
+        self.assertNotIn("location", missing_fields)
 
         matched = {item.lower() for item in body["matched_skills"]}
         self.assertIn("python", matched)
         self.assertIn("fastapi", matched)
         self.assertTrue("react" in matched or "typescript" in matched)
         self.assertIn("llm apis", matched)
+        self.assertIn("product feature development", matched)
 
         gaps = {item.lower() for item in body["missing_skills_or_gaps"]}
         self.assertTrue("kotlin/jvm" in gaps or "spring boot" in gaps)
         self.assertTrue("postgresql" in gaps or "gcp" in gaps)
         self.assertIn("langgraph", gaps)
+        self.assertNotIn("product feature development", gaps)
+
+        tags = {item.lower() for item in lead.get("tags", [])}
+        notes = lead.get("notes", "").lower()
+        self.assertTrue("on-site" in tags or "on-site" in notes)
+        self.assertTrue("full-time" in tags or "full-time" in notes)
 
     def test_create_rule_action_for_job_lead_uses_application_tailoring(self) -> None:
         create_response = self.client.post(

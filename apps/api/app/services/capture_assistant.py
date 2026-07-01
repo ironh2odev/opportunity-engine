@@ -27,8 +27,30 @@ SKILL_ALIASES: dict[str, list[str]] = {
     "typescript": ["typescript"],
     "llm apis": ["llm api", "llm apis", "openai api", "gpt api", "gpt-4 api"],
     "rag/context management": ["rag", "retrieval augmented generation", "context management", "vector database"],
-    "product feature development": ["feature development", "product feature", "product development"],
-    "full-stack engineering": ["full-stack", "full stack", "frontend and backend", "end-to-end"],
+    "product feature development": [
+        "feature development",
+        "product feature",
+        "product features",
+        "product development",
+        "product engineering",
+        "product systems",
+        "product implementation",
+        "full-stack product",
+        "full stack product",
+        "end-to-end feature",
+        "end to end feature",
+        "feature ownership",
+        "built product features",
+        "launched product features",
+        "deployed product features",
+        "mvp delivery",
+        "mvp",
+        "full-stack platform",
+        "full stack platform",
+        "platform delivery",
+        "end-to-end builder",
+    ],
+    "full-stack engineering": ["full-stack", "full stack", "frontend and backend", "end-to-end", "end to end"],
     "kotlin/jvm": ["kotlin", "jvm"],
     "spring boot": ["spring boot", "springboot"],
     "hibernate": ["hibernate"],
@@ -249,6 +271,24 @@ def _clean_org_candidate(value: str) -> str:
     return _line_normalize(cleaned)
 
 
+def _clean_location_candidate(value: str) -> str:
+    cleaned = _line_normalize(value)
+    cleaned = re.split(r"\s*[·•|]\s*", cleaned, maxsplit=1)[0]
+    cleaned = re.sub(r"\s+(?:reposted.*|promoted by hirer.*|responses managed off linkedin.*)$", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+\b(?:onsite|on-site|hybrid|remote)\b.*$", "", cleaned, flags=re.IGNORECASE)
+    return _line_normalize(cleaned)
+
+
+def _extract_job_location_line(line: str) -> str:
+    candidate = _clean_location_candidate(line)
+    if not candidate:
+        return ""
+    normalized = _normalize_location(candidate)
+    if normalized.lower() in {"remote", "hybrid", "on-site", "onsite"}:
+        return ""
+    return normalized
+
+
 def _looks_like_company_line(line: str) -> bool:
     lowered = line.lower()
     if _is_forbidden_job_candidate(line):
@@ -328,12 +368,12 @@ def _extract_job_header(processed_text: str) -> dict[str, str]:
     for line in header_lines:
         location_match = re.search(r"(?:location|ort)[:\-]\s*(.+)", line, flags=re.IGNORECASE)
         if location_match:
-            candidate = _normalize_location(location_match.group(1))
+            candidate = _extract_job_location_line(location_match.group(1))
             if candidate:
                 location = candidate
                 break
         if "," in line and any(country in line.lower() for country in ("germany", "united", "usa", "uk")):
-            candidate = _normalize_location(line)
+            candidate = _extract_job_location_line(line)
             if candidate:
                 location = candidate
                 break
